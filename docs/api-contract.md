@@ -76,7 +76,7 @@ per chunk:
 用途：浏览器端实时渲染「Minecraft 方块级彩色地图」（服务端只出数据 + palette，不生成图片）。
 
 - **hash16 算法**：`CRC32(方块资源名) & 0xFFFF`，例如
-  `CRC32("minecraft:grass_block") & 0xFFFF == 57453`；与站点 `GET /api/gis/map/palette`
+  `CRC32("minecraft:grass_block") & 0xFFFF == 54839`；与站点 `GET /api/gis/map/palette`
   的 `blocks[hash16]` 使用同一算法（Windows .NET/Java 均验证过一致性）。
 - **地表方块定义**：该列**顶层非空气方块**；若顶层是水，记录**水方块本身**（不是水下方块）；
   无数据/空列记 `0xFFFF`。
