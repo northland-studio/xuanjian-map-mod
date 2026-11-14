@@ -303,7 +303,7 @@ public class GisMainScreen extends Screen {
         this.addRenderableWidget(new XButton(contentX + contentW - 108, codeY, 108, 18,
                 "登录（输入框）", XButton.Style.PRIMARY, this::oauthCompleteFromInput));
 
-        int bottom = py + ph - 16;
+        int bottom = py + ph - 20;
         this.addRenderableWidget(new XButton(contentX, bottom, 76, UiKit.BTN_H, "保存",
                 XButton.Style.PRIMARY, this::saveSettings));
         this.addRenderableWidget(new XButton(contentX + 82, bottom, 76, UiKit.BTN_H, "重置",
@@ -586,8 +586,7 @@ public class GisMainScreen extends Screen {
                     contentX, y, UiKit.WARNING);
         }
         y += 12;
-        line(g, "剪贴板不可用时：链接见 config/xuanjianmap/oauth-authorize-url.txt，"
-                        + "code 可写入 oauth-code.txt 或直接粘贴输入框；code 支持 code=xxx / 整段回调 URL。",
+        line(g, "剪贴板不可用时：链接见 config/xuanjianmap/oauth-authorize-url.txt；code 可写入 oauth-code.txt 或直接粘贴输入框。",
                 contentX, y, UiKit.TEXT_MUTED);
     }
 
