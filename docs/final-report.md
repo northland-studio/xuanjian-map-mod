@@ -51,7 +51,7 @@
 | --- | --- | --- |
 | World ID / Server ID 绑定校验 | ✅ | bootstrap → resolve-world；客户端不能指定他人世界；未注册/归档 → 本地模式 |
 | 本地区块采集 | ✅ | chunk 坐标、高度矩阵、biome、表面方块直方图、结构、block entity（只采 Minecraft 原生数据，**不推断建筑/道路/城区/商店**） |
-| 地表方块矩阵（v2，方块彩色地图） | ✅ | 每列顶层非空气方块 → hash16 = CRC32(资源名)&0xFFFF（水面记录水本身），flags bit3 追加 surfaceBlockMatrix u16[n*n]；capture.surfaceBlocks 当前默认关闭（服务端 decodeBatch v2 上线后改默认值一行开启）；旧区块自动标记补采并同 key upsert 重传 |
+| 地表方块矩阵（v2，方块彩色地图） | ✅ | 每列顶层非空气方块 → hash16 = CRC32(资源名)&0xFFFF（水面记录水本身），flags bit3 追加 surfaceBlockMatrix u16[n*n]；capture.surfaceBlocks 默认开启（服务端 v2 已上线；设置页可切换）；hash16 与服务端 palette 已对账（grass_block 0xD637 / water 0x23E4 / stone 0x3214 / sand 0xFC48 / oak_planks 0x0782）；旧区块自动标记补采并同 key upsert 重传 |
 | 采集正确性保护 | ✅ | 未加载/接口不可用 → `-32768` 缺口保留，不伪造、不上传 |
 | SQLite 本地缓存 | ✅ | chunks / upload_jobs / gis_objects / sync_cursor / worlds / chunk_locals，WAL，后台单线程 |
 | 压缩二进制 blob | ✅ | 契约 `XJGIS` v1 小端格式；上传用 **zstd**（纯 Java aircompressor，jar-in-jar），失败自动降级 deflate |

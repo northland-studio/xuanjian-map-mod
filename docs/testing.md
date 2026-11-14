@@ -49,7 +49,7 @@
      （日志 2 断言：surfaceBlockMatrix 有效列 N/N（flags=13））；
    - 单元测试覆盖 hash16 稳定性（CRC32 标准向量）、bit3 字节布局与总长度、
      surfaceBlockMatrix 紧跟 lockHist 的顺序、旧格式（无 bit3）仍可解析、
-     xFFFF 无数据保留、capture.surfaceBlocks 默认关闭；
+     xFFFF 无数据保留、capture.surfaceBlocks 默认开启（服务端 v2 已上线）；
 9. 断言每张截图不是纯色（采样色数 ≥ 8）、结束时回到标题界面、截图数 ≥ 12。
 
 缺数据的语义在 gametest 与单元测试中都被保护：未加载区块/高度不可用 → 不可上传伪造数据。

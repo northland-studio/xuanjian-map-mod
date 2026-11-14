@@ -75,6 +75,10 @@ per chunk:
 
 用途：浏览器端实时渲染「Minecraft 方块级彩色地图」（服务端只出数据 + palette，不生成图片）。
 
+- **已确认向量（服务端 v2 对齐）**：grass_block=0xD637(54839)、water=0x23E4(9188)、
+  stone=0x3214(12820)、sand=0xFC48(64584)、oak_planks=0x0782(1922)；
+  标准自检 CRC32("123456789")==0xCBF43926；服务端 GET /api/gis/map/palette 的 locks
+  键即合法 hash16（lockNames 可反查），可作 CI 对账依据。
 - **hash16 算法**：`CRC32(方块资源名) & 0xFFFF`，例如
   `CRC32("minecraft:grass_block") & 0xFFFF == 54839`；与站点 `GET /api/gis/map/palette`
   的 `blocks[hash16]` 使用同一算法（Windows .NET/Java 均验证过一致性）。
