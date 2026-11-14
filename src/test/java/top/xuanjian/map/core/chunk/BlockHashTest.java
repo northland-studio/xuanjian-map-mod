@@ -21,6 +21,12 @@ class BlockHashTest {
         assertEquals(31742, BlockHash.hash16("minecraft:oak_log"));
         assertEquals(36847, BlockHash.hash16("minecraft:dirt"));
         assertEquals(40204, BlockHash.hash16("minecraft:short_grass"));
+        // 与服务端已确认的 v2 向量表一致（docs/gis-api.md §surfaceBlockMatrix）
+        assertEquals(0xD637, BlockHash.hash16("minecraft:grass_block"));
+        assertEquals(0x23E4, BlockHash.hash16("minecraft:water"));
+        assertEquals(0x3214, BlockHash.hash16("minecraft:stone"));
+        assertEquals(0xFC48, BlockHash.hash16("minecraft:sand"));
+        assertEquals(0x0782, BlockHash.hash16("minecraft:oak_planks"));
     }
 
     /**

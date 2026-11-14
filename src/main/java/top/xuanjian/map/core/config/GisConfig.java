@@ -52,9 +52,9 @@ public class GisConfig {
     private int sampleStep = DEFAULT_SAMPLE_STEP;
     /**
      * v2：是否采集/上传 surfaceBlockMatrix（地表方块 hash16）。
-     * 默认关闭：等服务端 decodeBatch v2 + palette 上线并回报后再默认开启（改默认值一行即可）。
+     * 服务端已于 v2 上线 decodeBatch bit3 + palette，默认开启；用户显式配置 false 可关闭。
      */
-    private boolean captureSurfaceBlocks = false;
+    private boolean captureSurfaceBlocks = true;
 
     private boolean uploadEnabled = true;
     private int uploadRatePerMinute = DEFAULT_UPLOAD_RATE_PER_MINUTE;
@@ -115,7 +115,7 @@ public class GisConfig {
         captureIntervalTicks = clampInt(intOf("capture.intervalTicks", DEFAULT_CAPTURE_INTERVAL_TICKS), 20, 12000);
         captureRadiusChunks = clampInt(intOf("capture.radiusChunks", DEFAULT_CAPTURE_RADIUS_CHUNKS), 0, 8);
         sampleStep = clampInt(intOf("capture.sampleStep", DEFAULT_SAMPLE_STEP), 1, 32);
-        captureSurfaceBlocks = bool("capture.surfaceBlocks", false);
+        captureSurfaceBlocks = bool("capture.surfaceBlocks", true);
 
         uploadEnabled = bool("upload.enabled", true);
         uploadRatePerMinute = clampInt(intOf("upload.ratePerMinute", DEFAULT_UPLOAD_RATE_PER_MINUTE), 1, 600);
@@ -182,7 +182,7 @@ public class GisConfig {
         captureIntervalTicks = DEFAULT_CAPTURE_INTERVAL_TICKS;
         captureRadiusChunks = DEFAULT_CAPTURE_RADIUS_CHUNKS;
         sampleStep = DEFAULT_SAMPLE_STEP;
-        captureSurfaceBlocks = false;
+        captureSurfaceBlocks = true;
         uploadEnabled = true;
         uploadRatePerMinute = DEFAULT_UPLOAD_RATE_PER_MINUTE;
         uploadBatchChunks = DEFAULT_UPLOAD_BATCH_CHUNKS;

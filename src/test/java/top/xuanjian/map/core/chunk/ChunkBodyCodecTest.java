@@ -43,6 +43,18 @@ class ChunkBodyCodecTest {
     }
 
     @Test
+    void trailingBytesRejected() {
+        // 契约：surface 必须是最后一个字段，尾部多/少字节都会被服务端拒绝 → 客户端解码也必须严格
+        ChunkData data = sample(true);
+        byte[] body = ChunkBodyCodec.encodeBody(data);
+        byte[] longer = java.util.Arrays.copyOf(body, body.length + 2);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ChunkBodyCodec.decodeBody(longer));
+        byte[] shorter = java.util.Arrays.copyOf(body, body.length - 2);
+        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                () -> ChunkBodyCodec.decodeBody(shorter));
+    }
+    @Test
     void legacyBodyWithoutSurfaceRoundtrip() {
         ChunkData data = sample(false);
         byte[] body = ChunkBodyCodec.encodeBody(data);

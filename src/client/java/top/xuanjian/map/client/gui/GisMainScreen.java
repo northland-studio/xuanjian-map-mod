@@ -260,7 +260,7 @@ public class GisMainScreen extends Screen {
         stepBox = addField(fieldX + 140, y, 60, String.valueOf(config.sampleStep()));
         y += row + 2;
 
-        int toggleW = Math.max(66, (contentW - 8) / 3 - 4);
+        int toggleW = Math.max(52, (contentW - 12) / 4 - 4);
         this.addRenderableWidget(new XButton(contentX, y, toggleW, 18,
                 config.uploadEnabled() ? "上传：开" : "上传：关", XButton.Style.SECONDARY, () -> {
             toggleClient(c -> c.toggleUploadEnabled());
@@ -272,6 +272,17 @@ public class GisMainScreen extends Screen {
         this.addRenderableWidget(new XButton(contentX + (toggleW + 4) * 2, y, toggleW, 18,
                 config.hudEnabled() ? "HUD：开" : "HUD：关", XButton.Style.SECONDARY, () -> {
             toggleClient(c -> c.toggleHudEnabled());
+        }));
+        // v2 方块彩色地图数据（surfaceBlockMatrix）
+        this.addRenderableWidget(new XButton(contentX + (toggleW + 4) * 3, y, toggleW, 18,
+                config.captureSurfaceBlocks() ? "地表：开" : "地表：关", XButton.Style.SECONDARY, () -> {
+            GisClient c = GisClient.get();
+            if (c != null) {
+                c.config().captureSurfaceBlocks(!c.config().captureSurfaceBlocks());
+                c.saveConfig();
+                note("地表方块采集：" + (c.config().captureSurfaceBlocks() ? "已开启" : "已关闭"));
+            }
+            buildWidgets();
         }));
 
         // OAuth 登录闭环（剪贴板不可用时可用下方输入框手动完成）
