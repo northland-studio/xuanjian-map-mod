@@ -137,9 +137,8 @@ public final class ChunkSampler {
         }
         int[] biomeMatrix = anyBiome ? biomes : null;
 
-        List<ChunkData.BlockCount> blockHist = null;
+        List<ChunkData.BlockCount> blockHist = new ArrayList<>();
         if (includeBlockHist && !histogram.isEmpty()) {
-            blockHist = new ArrayList<>();
             histogram.entrySet().stream()
                     .sorted(Comparator.<Map.Entry<Integer, Long>>comparingLong(Map.Entry::getValue).reversed()
                             .thenComparingInt(Map.Entry::getKey))
