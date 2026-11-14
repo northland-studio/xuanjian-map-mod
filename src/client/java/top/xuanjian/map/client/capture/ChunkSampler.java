@@ -141,17 +141,21 @@ public final class ChunkSampler {
                 }
                 if (surfaceBlocks != null) {
                     // v2：该列「顶层非空气方块」；水面记录水方块本身；无数据/空列 = 0xFFFF
-                    Object surfaceBlock = block;
                     int surfaceY = heights[idx] - 1;
-                    for (int probe = 0; surfaceBlock == null && probe < 8; probe++) {
+                    String surfaceName = block == null ? null
+                            : registryId(blockRegistry, block, blockIdCache);
+                    // 若顶层是空气（heightmap 语义差异），向下最多探 8 格找顶层非空气方块
+                    for (int probe = 1; isAirBlockName(surfaceName) && probe <= 8; probe++) {
                         Object probePos = McReflect.construct(blockPosClass, worldX, surfaceY - probe, worldZ);
                         if (probePos == null) {
                             break;
                         }
-                        surfaceBlock = readBlock(chunk, level, probePos);
+                        Object candidate = readBlock(chunk, level, probePos);
+                        if (candidate == null) {
+                            continue;
+                        }
+                        surfaceName = registryId(blockRegistry, candidate, blockIdCache);
                     }
-                    String surfaceName = surfaceBlock == null ? null
-                            : registryId(blockRegistry, surfaceBlock, blockIdCache);
                     surfaceBlocks[idx] = isAirBlockName(surfaceName)
                             ? BlockHash.NO_SURFACE : BlockHash.hash16(surfaceName);
                 }
