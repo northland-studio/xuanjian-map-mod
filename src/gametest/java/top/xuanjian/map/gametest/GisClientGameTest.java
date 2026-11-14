@@ -23,18 +23,20 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 客户�?gametest：真实启动客户端，验�?GIS 客户端链路并逐页截图�? *
+ * 客户端 gametest：真实启动客户端，验证 GIS 客户端链路并逐页截图。
+ *
  * <p>断言（程序可判定，不依赖人工看图）：
  * <ol>
- *   <li>GIS 主界面能打开、有 widget、异步刷新不阻塞�?/li>
- *   <li>五个页面（概�?图层/世界/数据/设置）都能切换；</li>
+ *   <li>GIS 主界面能打开、有 widget、异步刷新不阻塞；</li>
+ *   <li>五个页面（概览/图层/世界/数据/设置）都能切换；</li>
  *   <li>Overlay 地图、HUD 预览能渲染；</li>
- *   <li>进入测试世界后：采集真的落库（chunk �?&gt; 0）、HUD 有维�?坐标�?/li>
- *   <li>每张截图不是纯色�?/li>
- *   <li>结束时回到标题界面�?/li>
+ *   <li>进入测试世界后：采集真的落库（chunk 数 &gt; 0）、HUD 有维度/坐标；</li>
+ *   <li>每张截图不是纯色；</li>
+ *   <li>结束时回到标题界面。</li>
  * </ol>
  *
- * <p>截图输出�?run/screenshots/，CI 作为 artifact 上传�? */
+ * <p>截图输出到 run/screenshots/，CI 作为 artifact 上传。
+ */
 public class GisClientGameTest implements FabricClientGameTest {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("xuanjianmap-gametest");
@@ -50,7 +52,7 @@ public class GisClientGameTest implements FabricClientGameTest {
     public void runTest(ClientGameTestContext context) {
         List<String> shots = new ArrayList<>();
 
-        // 离线/快速失败配置：CI �?xuanjian.top，走「本地模式」；采集加快，便于断言
+        // 离线/快速失败配置：CI 无 xuanjian.top，走「本地模式」；采集加快，便于断言
         context.runOnClient(client -> {
             GisClient gis = GisClient.get();
             if (gis == null) {
@@ -78,13 +80,13 @@ public class GisClientGameTest implements FabricClientGameTest {
         context.waitTicks(10);
         GisMainScreen main = mainRef.get();
         if (main == null) {
-            throw new AssertionError("GIS 主界面实例未被创�?);
+            throw new AssertionError("GIS 主界面实例未被创建");
         }
         Integer widgets = context.computeOnClient(client -> countWidgets(main));
         int widgetCount = widgets == null ? 0 : widgets;
-        LOGGER.info("[gametest] 主界�?widget �?{}", widgetCount);
+        LOGGER.info("[gametest] 主界面 widget 数={}", widgetCount);
         if (widgetCount <= 0) {
-            throw new AssertionError("GIS 主界面没有任�?widget");
+            throw new AssertionError("GIS 主界面没有任何 widget");
         }
         shots.add(capture(context, "1-gis-overview-empty"));
 
@@ -99,7 +101,7 @@ public class GisClientGameTest implements FabricClientGameTest {
                 throw new AssertionError("无法切换到页面：" + label);
             }
             if (!label.equals(current)) {
-                throw new AssertionError("切页�?currentPageLabel 不符�? + current);
+                throw new AssertionError("切页后 currentPageLabel 不符：" + current);
             }
             shots.add(capture(context, page[1]));
         }
@@ -116,7 +118,7 @@ public class GisClientGameTest implements FabricClientGameTest {
         context.waitTicks(8);
         shots.add(capture(context, "7-hud-preview"));
 
-        // ---------- 5) 测试世界：真实采�?+ 缓存 + HUD ----------
+        // ---------- 5) 测试世界：真实采集 + 缓存 + HUD ----------
         context.setScreen(() -> null);
         context.waitTicks(5);
         try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
@@ -147,31 +149,32 @@ public class GisClientGameTest implements FabricClientGameTest {
                 LOGGER.info("[gametest] 世界内：世界信息={}", gis.debugWorldInfo(client));
                 LOGGER.info("[gametest] 世界内：维度={}, 坐标={}/{}/{}",
                         gis.snapshot().session().dimension(), pos[0], pos[1], pos[2]);
-                LOGGER.info("[gametest] 本地模式={}, 上传状�?{}",
+                LOGGER.info("[gametest] 本地模式={}, 上传状态={}",
                         gis.snapshot().localMode(), gis.snapshot().uploadLine());
                 return gis.config().hudEnabled() ? 1 : 0;
             });
-            LOGGER.info("[gametest] 采集落库 chunk �?{}, backend={}, HUD={}",
+            LOGGER.info("[gametest] 采集落库 chunk 数={}, backend={}, HUD={}",
                     captured, backend, hud);
 
             if (captured <= 0) {
-                throw new AssertionError("测试世界内没有采集到任何区块（GIS 采集链路失败�?);
+                throw new AssertionError("测试世界内没有采集到任何区块（GIS 采集链路失败）");
             }
             if (session == null || session.dimension() == null || session.dimension().isBlank()) {
                 throw new AssertionError("HUD 会话维度为空（世界识别失败）");
             }
             if (!session.dimension().contains("overworld")) {
-                throw new AssertionError("维度解析错误（应为主世界 overworld�? " + session.dimension());
+                throw new AssertionError("维度解析错误（应为主世界 overworld）: " + session.dimension());
             }
             Boolean localMode = context.computeOnClient(client -> GisClient.get().snapshot().localMode());
             if (!Boolean.TRUE.equals(localMode)) {
-                throw new AssertionError("CI 无生�?API 时应为本地模式（上传暂停�?);
+                throw new AssertionError("CI 无生产 API 时应为本地模式（上传暂停）");
             }
             String uploadLine = context.computeOnClient(client -> GisClient.get().snapshot().uploadLine());
             if (uploadLine == null || !uploadLine.contains("暂停")) {
                 throw new AssertionError("本地模式上传状态文案不正确: " + uploadLine);
             }
-            // 用本�?mock 对象验证「城�?道路/Marker」叠加与 HUD 定位（生产当前无对象数据�?            context.runOnClient(client -> {
+            // 用本地 mock 对象验证「城区/道路/Marker」叠加与 HUD 定位（生产当前无对象数据）
+            context.runOnClient(client -> {
                 GisClient gis = GisClient.get();
                 var s = gis.session();
                 long worldId = s.worldId();
@@ -192,7 +195,7 @@ public class GisClientGameTest implements FabricClientGameTest {
                                 "gt-marker", "marker", "玄剑集市", 1, markerGeom,
                                 "{\"category\":\"shop\"}", 8, 8, 8, 8, now, false)));
                 gis.reloadLocatorFromStore();
-                LOGGER.info("[gametest] 已注�?mock GIS 对象：district/road/marker（world={}, dim={}�?,
+                LOGGER.info("[gametest] 已注入 mock GIS 对象：district/road/marker（world={}, dim={}）",
                         worldId, dim);
             });
             context.waitTicks(10);
@@ -204,7 +207,7 @@ public class GisClientGameTest implements FabricClientGameTest {
                 return location.hasDistrict() ? 1 : 0;
             });
             if (located == null || located != 1) {
-                throw new AssertionError("注入本地 GIS 对象�?HUD 未能识别城区（Point-in-Polygon 失败�?);
+                throw new AssertionError("注入本地 GIS 对象后 HUD 未能识别城区（Point-in-Polygon 失败）");
             }
             shots.add(capture(context, "8-inworld-hud"));
 
@@ -226,7 +229,7 @@ public class GisClientGameTest implements FabricClientGameTest {
             Boolean ok = context.computeOnClient(client -> worldMain.showPage("数据"));
             context.waitTicks(10);
             if (!Boolean.TRUE.equals(ok)) {
-                throw new AssertionError("世界内无法切换到数据�?);
+                throw new AssertionError("世界内无法切换到数据页");
             }
             shots.add(capture(context, "10-inworld-data-status"));
             context.setScreen(() -> null);
@@ -240,9 +243,9 @@ public class GisClientGameTest implements FabricClientGameTest {
             LOGGER.info("[gametest] 截图: {}", shot);
         }
         if (shots.size() < 10) {
-            throw new AssertionError("截图数量不足�? + shots.size() + " < 8�?);
+            throw new AssertionError("截图数量不足（" + shots.size() + " < 10）");
         }
-        LOGGER.info("[gametest] 全部通过，共 {} 张截�?, shots.size());
+        LOGGER.info("[gametest] 全部通过，共 {} 张截图", shots.size());
     }
 
     /* ==================== 截图与断言 ==================== */
@@ -250,16 +253,16 @@ public class GisClientGameTest implements FabricClientGameTest {
     private static String capture(ClientGameTestContext context, String name) {
         Path path = context.takeScreenshot(name);
         if (path == null) {
-            throw new AssertionError("截图失败�? + name);
+            throw new AssertionError("截图失败：" + name);
         }
         Path file = waitForFile(path);
         if (file == null) {
             throw new AssertionError("截图文件未生成：" + path);
         }
         int colors = countDistinctColors(file);
-        LOGGER.info("[gametest] 截图 {} -> {}（采样色�?{}�?, name, file.getFileName(), colors);
+        LOGGER.info("[gametest] 截图 {} -> {}（采样色数 {}）", name, file.getFileName(), colors);
         if (colors < 8) {
-            throw new AssertionError("画面疑似空白：截�?" + name + " 采样色数�?" + colors);
+            throw new AssertionError("画面疑似空白：截图 " + name + " 采样色数仅 " + colors);
         }
         return file.toString().replace('\\', '/');
     }
@@ -271,7 +274,8 @@ public class GisClientGameTest implements FabricClientGameTest {
                     return path;
                 }
             } catch (Exception ignored) {
-                // 继续�?            }
+                // 继续等
+            }
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {
@@ -299,7 +303,7 @@ public class GisClientGameTest implements FabricClientGameTest {
         }
     }
 
-    /* ==================== widget 计数（避开版本差异�?==================== */
+    /* ==================== widget 计数（避开版本差异） ==================== */
 
     private static int countWidgets(Object screen) {
         try {
