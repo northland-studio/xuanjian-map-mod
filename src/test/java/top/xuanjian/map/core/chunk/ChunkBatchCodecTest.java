@@ -169,7 +169,12 @@ class ChunkBatchCodecTest {
     @Test
     void surfaceBlockMatrixLayoutFollowsContractV2() {
         // v2：flags bit3 + surfaceBlockMatrix u16[n*n]，紧跟 blockHist 之后
-        ChunkData base = sample(3, -4, 1, true, false);
+        ChunkData baseNoHist = sample(3, -4, 1, true, false);
+        java.util.List<ChunkData.BlockCount> hist = java.util.List.of(
+                new ChunkData.BlockCount(1, 120), new ChunkData.BlockCount(9, 80));
+        ChunkData base = new ChunkData(baseNoHist.chunkX(), baseNoHist.chunkZ(),
+                baseNoHist.sampleStep(), baseNoHist.sampleSize(), baseNoHist.minY(),
+                baseNoHist.maxY(), baseNoHist.heights(), baseNoHist.biomes(), hist);
         int n = base.cells();
         int[] surface = new int[n];
         for (int i = 0; i < n; i++) {
