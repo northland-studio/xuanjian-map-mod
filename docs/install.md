@@ -21,11 +21,29 @@
 | GIS 界面 → 数据 | 区块/任务统计、重试上传、强制同步、清理缓存 |
 | GIS 地图 | 城区/道路/Marker 叠加渲染（自有方案，兼容 Xaero 共存） |
 
-## 3. 登录与上传
+## 3. 登录与上传（OAuth2 PKCE，游戏内闭环）
 
-- 上传需要 xuanjian.top 统一账号 OAuth2 登录（PKCE）。在 GIS 设置页点「登录 OAuth」，
-  浏览器打开日志里的授权链接，完成后把回调 code 填入（当前 CLI/日志方式），token 会安全存到
-  `config/xuanjianmap-oauth.properties`（权限 600，不入库）。
+上传需要 xuanjian.top 统一账号登录。**全程在游戏内完成，不需要命令行**：
+
+1. 打开 GIS 界面 →「设置」页（未登录时显示两个按钮）。
+2. 点 **「登录 OAuth」**：
+   - 自动生成 PKCE 授权链接并**复制到系统剪贴板**（同时打印到 `logs/latest.log`，
+     若剪贴板写入失败会提示手动复制日志里的链接）；
+   - 把浏览器地址栏粘贴打开该链接 → 登录并授权。
+3. 授权后浏览器停在回调页 `https://xuanjian.top/api/oauth/mod-callback`，
+   页面上直接显示 `code` 与 `state`（code **5 分钟一次性有效**）。
+4. 复制页面上的 `code`（直接复制 code、`code=xxx`、或整段回调 URL 都可以，客户端会自动提取）。
+5. 回到游戏 →「设置」页点 **「完成登录（读取剪贴板 code）」**：
+   - 成功：提示「已登录：<昵称>」，设置页显示 OAuth 已登录（昵称）；
+   - 失败：提示中文原因，例如「授权码无效或已过期（code 5 分钟一次性，请重新点「登录 OAuth」）」、
+     「请求不合法（检查 redirect_uri / code_verifier）」、「网络错误：无法连接 …」，
+     并附带服务端 `error_description` 便于排查。
+6. 已登录后按钮变为「退出登录」/「重新登录（生成链接）」。
+
+说明：
+- token 安全存到 `config/xuanjianmap-oauth.properties`（权限 600，不入库）；access_token 2h、
+  refresh_token 30d 一次性轮换，过期自动刷新。
+- 上传还需要服务端 `gis.submit` 权限；被拒时「数据/概览」页会显示 `forbidden` 与缺少的权限名。
 - 未登录 / 世界未注册 / 世界归档时进入**本地模式**：HUD、地图、采集缓存都可用，**不上传**。
 - 生产世界恢复 ACTIVE 后，客户端会自动恢复上传（或点「立即同步/重新绑定」立即恢复）。
 

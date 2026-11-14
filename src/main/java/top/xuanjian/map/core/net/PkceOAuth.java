@@ -1,5 +1,6 @@
 package top.xuanjian.map.core.net;
 
+import com.google.gson.JsonObject;
 import top.xuanjian.map.core.config.GisConfig;
 import top.xuanjian.map.core.util.GisLog;
 
@@ -148,8 +149,7 @@ public final class PkceOAuth {
         try {
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new ApiException("unauthorized",
-                        "OAuth token 交换失败: HTTP " + response.statusCode(), response.statusCode());
+                throw oauthError(response);
             }
             var json = Json.parseObject(response.body());
             String access = Json.optString(json, "access_token", "");
@@ -157,18 +157,100 @@ public final class PkceOAuth {
             long expiresIn = Json.optLong(json, "expires_in", 7200);
             String scope = Json.optString(json, "scope", DEFAULT_SCOPE);
             if (access.isBlank()) {
-                throw new ApiException("unauthorized", "OAuth 响应缺少 access_token", response.statusCode());
+                throw new ApiException("invalid_response", "OAuth 响应缺少 access_token", response.statusCode());
             }
+            String nickname = extractNickname(json);
             OAuthTokens tokens = new OAuthTokens(access, refresh,
                     System.currentTimeMillis() + expiresIn * 1000L, scope);
-            tokenStore.save(tokens);
-            GisLog.info(TAG, "OAuth 登录成功（scope=" + scope + "）");
+            tokenStore.save(tokens, nickname);
+            GisLog.info(TAG, "OAuth 登录成功（scope=" + scope
+                    + (nickname == null || nickname.isBlank() ? "" : ", 用户=" + nickname) + "）");
             return tokens;
         } catch (java.io.IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            throw new ApiException("network_error", "OAuth 请求失败: " + e.getMessage(), 0);
+            throw new ApiException("network_error",
+                    "网络错误：无法连接 " + config.apiBase(), 0);
+        }
+    }
+
+    /**
+     * 把 OAuth 2.0 错误响应 `{error, error_description}` 映射成可直接给玩家看的中文原因。
+     * code 保留服务端原始 error（便于排查/日志），message 为中文 + 服务端描述。
+     */
+    private static ApiException oauthError(HttpResponse<String> response) {
+        JsonObject json = Json.parseObjectQuietly(response.body());
+        String code = Json.optString(json, "error", "oauth_error");
+        String description = Json.optString(json, "error_description",
+                Json.optString(json, "message", ""));
+        String message = switch (code) {
+            case "invalid_grant" -> "授权码无效或已过期（code 5 分钟一次性，请重新点「登录 OAuth」）";
+            case "invalid_request" -> "请求不合法（检查 redirect_uri / code_verifier 是否与授权时一致）";
+            case "invalid_client" -> "OAuth 客户端未注册或 client_id 配置错误";
+            case "unauthorized_client" -> "该客户端不允许使用此授权方式";
+            case "unsupported_grant_type" -> "不支持的授权类型";
+            case "invalid_scope" -> "请求的 scope 不被允许";
+            case "server_error", "temporarily_unavailable" -> "OAuth 服务端暂时不可用，请稍后重试";
+            default -> "OAuth 登录失败（" + code + "）";
+        };
+        if (!description.isBlank()) {
+            message += "：" + description;
+        }
+        return new ApiException(code, message, response.statusCode());
+    }
+
+    /** 从 token 响应里尽力提取昵称（不同实现可能放在 user/nickname/username 等字段）。 */
+    private static String extractNickname(JsonObject json) {
+        String direct = Json.optString(json, "nickname",
+                Json.optString(json, "username", Json.optString(json, "name", "")));
+        if (!direct.isBlank()) {
+            return direct;
+        }
+        JsonObject user = Json.optObject(json, "user");
+        if (user == null) {
+            user = Json.optObject(json, "data");
+        }
+        if (user != null) {
+            return Json.optString(user, "nickname",
+                    Json.optString(user, "username", Json.optString(user, "name", "")));
+        }
+        return "";
+    }
+
+    /**
+     * 登录后用 access_token 取用户信息（`GET /api/oauth/userinfo`），用于 UI 显示「已登录：昵称」。
+     * 失败返回空串，不影响登录结果。
+     */
+    public String fetchNickname() {
+        OAuthTokens tokens = tokenStore.tokens();
+        if (!tokens.hasAccessToken()) {
+            return "";
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(base() + "/api/oauth/userinfo"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer " + tokens.accessToken())
+                    .GET()
+                    .build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                GisLog.debug(TAG, "userinfo 不可用: HTTP " + response.statusCode());
+                return "";
+            }
+            JsonObject json = Json.parseObject(response.body());
+            String nickname = extractNickname(json);
+            if (nickname == null || nickname.isBlank()) {
+                JsonObject user = Json.optObject(json, "user");
+                if (user != null) {
+                    nickname = Json.optString(user, "nickname", Json.optString(user, "username", ""));
+                }
+            }
+            return nickname == null ? "" : nickname;
+        } catch (Exception e) {
+            GisLog.debug(TAG, "获取 nickname 失败: " + e);
+            return "";
         }
     }
 
