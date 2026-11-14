@@ -178,7 +178,11 @@ public class GisClientGameTest implements FabricClientGameTest {
             }
 
             // v2：断言本地缓存里至少一个区块带 surfaceBlockMatrix，且不是全 0xFFFF
-            Integer surfaceValid = context.computeOnClient(client -> {
+            // 注意：落库是后台 DB 线程异步的，需要轮询等待（否则偶发「尚未落库」假失败）
+            Integer surfaceValid = -1;
+            for (int attempt = 0; attempt < 20 && (surfaceValid == null || surfaceValid <= 0); attempt++) {
+                context.waitTicks(5);
+                surfaceValid = context.computeOnClient(client -> {
                 GisClient gis = GisClient.get();
                 var s = gis.session();
                 int[] pos = top.xuanjian.map.client.hud.GisHudRenderer.playerPosition(client);
@@ -204,7 +208,8 @@ public class GisClientGameTest implements FabricClientGameTest {
                 LOGGER.info("[gametest] v2 断言：surfaceBlockMatrix 有效列 {}/{}（flags={}）",
                         valid, data.surfaceBlocks().length, data.flags());
                 return valid;
-            });
+                });
+            }
             if (surfaceValid == null || surfaceValid <= 0) {
                 throw new AssertionError("v2 地表方块矩阵缺失或全为 0xFFFF: " + surfaceValid);
             }
