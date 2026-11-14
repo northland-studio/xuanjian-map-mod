@@ -62,6 +62,7 @@ public class GisMainScreen extends Screen {
     private EditBox intervalBox;
     private EditBox radiusBox;
     private EditBox stepBox;
+    private EditBox oauthCodeBox;
 
     public GisMainScreen() {
         this(null);
@@ -233,7 +234,7 @@ public class GisMainScreen extends Screen {
         int fieldX = contentX + 78;
         int y = contentY + 2;
         int fieldW = Math.max(120, contentW - 90);
-        int row = 22;
+        int row = 20;
 
         apiBaseBox = addField(fieldX, y, fieldW, config.apiBase());
         y += row;
@@ -258,19 +259,7 @@ public class GisMainScreen extends Screen {
                 config.hudEnabled() ? "HUD：开" : "HUD：关",
                 () -> toggleClient(GisClient::toggleHudEnabled)));
 
-        int bottom = py + ph - 26;
-        this.addRenderableWidget(Buttons.of(contentX, bottom, 76, UiKit.BTN_H, "保存", this::saveSettings));
-        this.addRenderableWidget(Buttons.of(contentX + 82, bottom, 76, UiKit.BTN_H, "重置", () -> {
-            GisClient c = GisClient.get();
-            if (c != null) {
-                c.config().resetDefaults();
-                c.saveConfig();
-            }
-            buildWidgets();
-            note("已重置为默认配置并保存");
-        }));
-
-        // OAuth 登录闭环：生成链接（自动复制到剪贴板）+ 从剪贴板读 code 完成登录
+        // OAuth 登录闭环（剪贴板不可用时可用下方输入框手动完成）
         boolean loggedIn = client.tokenStore().loggedIn();
         int oauthY = y + 26;
         if (loggedIn) {
@@ -282,14 +271,33 @@ public class GisMainScreen extends Screen {
                 note("已退出 OAuth 登录");
                 buildWidgets();
             }));
-            this.addRenderableWidget(Buttons.of(contentX + 102, oauthY, 130, 18,
+            this.addRenderableWidget(Buttons.of(contentX + 102, oauthY, 150, 18,
                     "重新登录（生成链接）", this::oauthBegin));
         } else {
-            this.addRenderableWidget(Buttons.of(contentX, oauthY, 96, 18, "登录 OAuth",
-                    this::oauthBegin));
-            this.addRenderableWidget(Buttons.of(contentX + 102, oauthY, 176, 18,
-                    "完成登录（读取剪贴板 code）", this::oauthComplete));
+            this.addRenderableWidget(Buttons.of(contentX, oauthY, 140, 18,
+                    "生成授权链接（复制）", this::oauthBegin));
+            this.addRenderableWidget(Buttons.of(contentX + 146, oauthY, 130, 18,
+                    "完成登录（剪贴板）", this::oauthComplete));
         }
+
+        // code 手动输入兜底：剪贴板不可用时可直接粘贴/输入回调页 code
+        int codeY = oauthY + 22;
+        oauthCodeBox = addField(contentX, codeY, Math.max(80, contentW - 114), "");
+        oauthCodeBox.setMaxLength(1024);
+        this.addRenderableWidget(Buttons.of(contentX + contentW - 108, codeY, 108, 18,
+                "登录（输入框）", this::oauthCompleteFromInput));
+
+        int bottom = py + ph - 16;
+        this.addRenderableWidget(Buttons.of(contentX, bottom, 76, UiKit.BTN_H, "保存", this::saveSettings));
+        this.addRenderableWidget(Buttons.of(contentX + 82, bottom, 76, UiKit.BTN_H, "重置", () -> {
+            GisClient c = GisClient.get();
+            if (c != null) {
+                c.config().resetDefaults();
+                c.saveConfig();
+            }
+            buildWidgets();
+            note("已重置为默认配置并保存");
+        }));
     }
 
     private void oauthBegin() {
@@ -299,10 +307,11 @@ public class GisMainScreen extends Screen {
         }
         GisClient.LoginBegin begin = client.beginLoginAndCopy();
         if (begin.copied()) {
-            note("授权链接已复制到剪贴板：请在浏览器打开并登录，完成后复制回调页上的 code 回游戏，"
-                    + "再点「完成登录（读取剪贴板 code）」");
+            note("授权链接已复制到剪贴板（方式：" + begin.method()
+                    + "）：请在浏览器打开并登录，完成后复制回调页 code，点「完成登录」");
         } else {
-            note("授权链接已生成但剪贴板写入失败（已打印到日志，可手动复制）", UiKit.WARNING);
+            String file = begin.filePath().isBlank() ? "日志（logs/latest.log）" : begin.filePath();
+            note("剪贴板不可用：授权链接已保存到 " + file + "，请打开复制后到浏览器登录", UiKit.WARNING);
         }
         buildWidgets();
     }
@@ -313,6 +322,21 @@ public class GisMainScreen extends Screen {
             return;
         }
         GisClient.LoginResult result = client.completeLoginFromClipboard();
+        note(result.message(), result.ok() ? UiKit.SUCCESS : UiKit.DANGER);
+        buildWidgets();
+    }
+
+    private void oauthCompleteFromInput() {
+        GisClient client = GisClient.get();
+        if (client == null || oauthCodeBox == null) {
+            return;
+        }
+        String text = oauthCodeBox.getValue();
+        if (text == null || text.isBlank()) {
+            note("请先在输入框粘贴回调页的 code", UiKit.WARNING);
+            return;
+        }
+        GisClient.LoginResult result = client.completeLoginWithCode(text);
         note(result.message(), result.ok() ? UiKit.SUCCESS : UiKit.DANGER);
         buildWidgets();
     }
@@ -513,7 +537,7 @@ public class GisMainScreen extends Screen {
     private void renderSettings(GuiGraphics g) {
         int fieldX = contentX + 78;
         int y = contentY + 2;
-        int row = 22;
+        int row = 20;
         label(g, "API 地址", fieldX - 6, y);
         y += row;
         label(g, "服务器 Key", fieldX - 6, y);
@@ -522,30 +546,23 @@ public class GisMainScreen extends Screen {
         line(g, "次/分钟 · chunk/批", fieldX + 140, y + 5, UiKit.TEXT_MUTED);
         y += row;
         label(g, "采集间隔/半径/步长", fieldX - 6, y);
-        y += row;
-        label(g, "采集间隔/半径/步长", fieldX - 6, y);
-        // 提示文字放在 OAuth 按钮行下方，避免与按钮/输入框重叠
-        y = contentY + 144;
-        line(g, "上传限速与服务端 60 次/分钟对齐；采集半径过大反而浪费 CPU 与带宽。",
-                contentX, y, UiKit.TEXT_MUTED);
-        y += 14;
+        // 提示文字放在 OAuth/输入框区域下方，避免与控件重叠
+        y = contentY + 152;
         GisClient client = GisClient.get();
         boolean loggedIn = client != null && client.tokenStore().loggedIn();
         if (loggedIn) {
             String nickname = client.tokenStore().nickname();
             line(g, "OAuth：已登录" + (nickname == null || nickname.isBlank() ? "" : "（" + nickname + "）")
                     + " · 写权限由服务端 gis.submit 判定", contentX, y, UiKit.SUCCESS);
-            y += 14;
-            line(g, "token 过期会自动刷新；上传被拒（forbidden）时「数据」页会显示缺少的权限名。",
-                    contentX, y, UiKit.TEXT_MUTED);
         } else {
-            line(g, "OAuth 登录：① 点「登录 OAuth」→ 链接自动复制到剪贴板（也打印在日志）；"
-                    + "② 浏览器打开并登录，回调页会显示 code；③ 复制 code 后点「完成登录」。",
+            line(g, "OAuth：①「生成授权链接」自动复制（失败写入文件）→ ② 浏览器登录拿 code → "
+                    + "③ 粘贴到输入框点「登录（输入框）」，或复制 code 后点「完成登录（剪贴板）」",
                     contentX, y, UiKit.WARNING);
-            y += 14;
-            line(g, "code 容错：可直接粘贴 code、code=xxx 或整段回调 URL；scope read:user read:member。",
-                    contentX, y, UiKit.TEXT_MUTED);
         }
+        y += 12;
+        line(g, "剪贴板不可用时：链接见 config/xuanjianmap/oauth-authorize-url.txt，"
+                + "code 可写入 oauth-code.txt 或直接粘贴输入框；code 支持 code=xxx / 整段回调 URL。",
+                contentX, y, UiKit.TEXT_MUTED);
     }
 
     private void label(GuiGraphics g, String text, int rightX, int boxY) {

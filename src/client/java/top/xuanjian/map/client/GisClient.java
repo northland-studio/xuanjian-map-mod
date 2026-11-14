@@ -95,6 +95,7 @@ public final class GisClient {
     private LocationInfo cachedLocation = LocationInfo.EMPTY;
     private long locationAt;
     private String loginVerifier = "";
+    private volatile String pendingAuthorizeUrl = "";
 
     private GisClient() {
         this.dataDir = FabricLoader.getInstance().getConfigDir().resolve("xuanjianmap");
@@ -590,29 +591,57 @@ public final class GisClient {
 
     /* ==================== OAuth 登录（UI 闭环） ==================== */
 
-    /** 登录链接生成结果。 */
-    public record LoginBegin(boolean copied, String url) {
+    /** 登录链接生成结果：是否复制成功、链接、复制方式、链接文件路径（兜底）。 */
+    public record LoginBegin(boolean copied, String url, String method, String filePath) {
+        public static LoginBegin failed(String url, String filePath) {
+            return new LoginBegin(false, url, "none", filePath);
+        }
     }
 
     /** 登录结果（用于 UI 提示，成功时带昵称）。 */
     public record LoginResult(boolean ok, String message, String nickname) {
     }
 
+    /** 最近一次生成的授权链接（设置页展示，便于用户手动 Ctrl+A/Ctrl+C 复制）。 */
+    public String pendingAuthorizeUrl() {
+        return pendingAuthorizeUrl;
+    }
+
+    /** 授权链接兜底文件（剪贴板不可用时写入，用户可手动打开复制）。 */
+    public java.nio.file.Path authorizeUrlFile() {
+        return dataDir.resolve("oauth-authorize-url.txt");
+    }
+
+    /** code 兜底文件：剪贴板不可用时，用户可把 code 写进该文件后点「完成登录」。 */
+    public java.nio.file.Path oauthCodeFile() {
+        return dataDir.resolve("oauth-code.txt");
+    }
+
     /**
-     * 生成 PKCE 授权链接并复制到系统剪贴板（同时打印日志）。
-     *
-     * <p>之后用户在浏览器打开链接登录，服务端回调页会展示 code；用户复制 code 后
-     * 点「完成登录（读取剪贴板 code）」即可闭环。
+     * 生成 PKCE 授权链接：先尝试系统剪贴板（GLFW→KeyboardHandler→AWT 多重兜底），
+     * 全部失败时写入 {@code config/xuanjianmap/oauth-authorize-url.txt}，
+     * 保证用户仍能手动复制（不依赖剪贴板权限）。
      */
     public LoginBegin beginLoginAndCopy() {
         String url = beginLogin();
-        boolean copied = ClipboardCompat.write(url);
-        if (copied) {
-            GisLog.info(TAG, "OAuth 授权链接已复制到剪贴板: " + url);
+        pendingAuthorizeUrl = url;
+        ClipboardCompat.WriteResult write = ClipboardCompat.write(url);
+        String filePath = "";
+        if (write.ok()) {
+            GisLog.info(TAG, "OAuth 授权链接已复制到剪贴板（方式=" + write.method() + "）: " + url);
         } else {
-            GisLog.info(TAG, "OAuth 授权链接（剪贴板写入失败，请手动复制）: " + url);
+            try {
+                java.nio.file.Path file = authorizeUrlFile();
+                java.nio.file.Files.createDirectories(file.getParent());
+                java.nio.file.Files.writeString(file, url);
+                filePath = file.toAbsolutePath().toString();
+                GisLog.info(TAG, "剪贴板不可用，授权链接已写入文件: " + filePath);
+            } catch (Exception e) {
+                GisLog.warn(TAG, "写授权链接文件失败: " + e);
+            }
+            GisLog.info(TAG, "OAuth 授权链接: " + url);
         }
-        return new LoginBegin(copied, url);
+        return new LoginBegin(write.ok(), url, write.method(), filePath);
     }
 
     public String beginLogin() {
@@ -620,13 +649,38 @@ public final class GisClient {
         return oauth.authorizeUrl(loginVerifier, "xjm");
     }
 
-    /** 从系统剪贴板读取 code 并完成登录（容错：纯 code / code=… / 完整回调 URL）。 */
+    /** 重新复制最近的授权链接（设置页「复制链接」按钮用）。 */
+    public boolean copyPendingAuthorizeUrl() {
+        if (pendingAuthorizeUrl == null || pendingAuthorizeUrl.isBlank()) {
+            return false;
+        }
+        return ClipboardCompat.write(pendingAuthorizeUrl).ok();
+    }
+
+    /**
+     * 从系统剪贴板读取 code 并完成登录（容错：纯 code / code=… / 完整回调 URL）。
+     * 剪贴板不可用时尝试读 {@code oauth-code.txt}，仍失败则提示用输入框手动粘贴。
+     */
     public LoginResult completeLoginFromClipboard() {
         String clipboard = ClipboardCompat.read();
-        if (clipboard == null || clipboard.isBlank()) {
-            return new LoginResult(false, "剪贴板为空：请先在浏览器复制回调页上的 code", "");
+        if (clipboard != null && !clipboard.isBlank()) {
+            return completeLoginWithCode(clipboard);
         }
-        return completeLoginWithCode(clipboard);
+        try {
+            java.nio.file.Path file = oauthCodeFile();
+            if (java.nio.file.Files.exists(file)) {
+                String text = java.nio.file.Files.readString(file).trim();
+                if (!text.isEmpty()) {
+                    GisLog.info(TAG, "剪贴板不可用，改用 oauth-code.txt 中的 code");
+                    return completeLoginWithCode(text);
+                }
+            }
+        } catch (Exception e) {
+            GisLog.warn(TAG, "读取 oauth-code.txt 失败: " + e);
+        }
+        return new LoginResult(false,
+                "剪贴板不可用：请在设置页输入框手动粘贴回调页的 code，再点「登录（输入框）」"
+                        + "（也可把 code 写入 " + oauthCodeFile().toAbsolutePath() + "）", "");
     }
 
     /**

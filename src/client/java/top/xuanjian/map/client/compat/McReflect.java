@@ -26,6 +26,9 @@ public final class McReflect {
     private static final String TAG = "mc-reflect";
     private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
     private static final Set<String> MISSING_LOGGED = ConcurrentHashMap.newKeySet();
+    /** 已确认找不到的方法（避免每次点击/每 tick 重新枚举，减少反射开销与日志噪音）。 */
+    private static final Set<String> FAILED_LOOKUPS = ConcurrentHashMap.newKeySet();
+    private static final Method[] EMPTY_METHODS = new Method[0];
     private static final Map<String, Class<?>> CLASS_CACHE = new ConcurrentHashMap<>();
 
     private McReflect() {
@@ -70,7 +73,7 @@ public final class McReflect {
                     return f.get(target);
                 } catch (NoSuchFieldException e) {
                     c = c.getSuperclass();
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     logMissing(target.getClass().getSimpleName() + "#" + name, e);
                     break;
                 }
@@ -87,7 +90,7 @@ public final class McReflect {
             try {
                 Field f = type.getField(name);
                 return f.get(null);
-            } catch (Exception ignored) {
+            } catch (Throwable ignored) {
                 // 下一个
             }
         }
@@ -104,7 +107,13 @@ public final class McReflect {
             return v;
         }
         if (type.isEnum()) {
-            Object[] values = type.getEnumConstants();
+            Object[] values;
+            try {
+                values = type.getEnumConstants();
+            } catch (Throwable t) {
+                logMissing(type.getSimpleName() + "#<enum>", t);
+                values = null;
+            }
             if (values != null) {
                 for (String name : names) {
                     for (Object value : values) {
@@ -131,7 +140,7 @@ public final class McReflect {
                 try {
                     m.setAccessible(true);
                     return m.invoke(target, args);
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     logMissing(target.getClass().getSimpleName() + "." + name, e);
                 }
             }
@@ -159,7 +168,7 @@ public final class McReflect {
                 try {
                     m.setAccessible(true);
                     return m.invoke(null, args);
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     logMissing(type.getSimpleName() + "." + name, e);
                 }
             }
@@ -171,7 +180,14 @@ public final class McReflect {
         if (type == null) {
             return null;
         }
-        for (Constructor<?> ctor : type.getDeclaredConstructors()) {
+        Constructor<?>[] constructors;
+        try {
+            constructors = type.getDeclaredConstructors();
+        } catch (Throwable t) {
+            logMissing(type.getSimpleName() + "#<constructors>", t);
+            return null;
+        }
+        for (Constructor<?> ctor : constructors) {
             if (matches(ctor.getParameterTypes(), args)) {
                 try {
                     ctor.setAccessible(true);
@@ -192,6 +208,9 @@ public final class McReflect {
         if (cached != null) {
             return cached;
         }
+        if (FAILED_LOOKUPS.contains(key)) {
+            return null;
+        }
         List<Class<?>> candidates = new ArrayList<>();
         Class<?> c = type;
         while (c != null) {
@@ -199,7 +218,7 @@ public final class McReflect {
             c = c.getSuperclass();
         }
         for (Class<?> cls : candidates) {
-            for (Method m : cls.getDeclaredMethods()) {
+            for (Method m : declaredMethodsSafe(cls)) {
                 if (!m.getName().equals(name) || m.isSynthetic()) {
                     continue;
                 }
@@ -214,16 +233,33 @@ public final class McReflect {
         }
         // 接口方法（例如 Holder 的 unwrapKey 可能来自接口）
         for (Class<?> cls : candidates) {
-            for (Class<?> itf : cls.getInterfaces()) {
-                for (Method m : itf.getMethods()) {
-                    if (m.getName().equals(name) && matches(m.getParameterTypes(), args)) {
-                        METHOD_CACHE.put(key, m);
-                        return m;
+            try {
+                for (Class<?> itf : cls.getInterfaces()) {
+                    for (Method m : itf.getMethods()) {
+                        if (m.getName().equals(name) && matches(m.getParameterTypes(), args)) {
+                            METHOD_CACHE.put(key, m);
+                            return m;
+                        }
                     }
                 }
+            } catch (Throwable t) {
+                // 某些类的签名引用了运行期不存在的可选库类型（如 renderpearl GpuBackend），
+                // 枚举方法会抛 NoClassDefFoundError —— 跳过即可，不能让模组崩溃。
+                logMissing(cls.getSimpleName() + "#<interfaces>", t);
             }
         }
+        FAILED_LOOKUPS.add(key);
         return null;
+    }
+
+    /** 安全枚举方法：签名中引用了缺失类的类会抛 LinkageError，必须吞掉。 */
+    private static Method[] declaredMethodsSafe(Class<?> cls) {
+        try {
+            return cls.getDeclaredMethods();
+        } catch (Throwable t) {
+            logMissing(cls.getSimpleName() + "#<methods>", t);
+            return EMPTY_METHODS;
+        }
     }
 
     private static boolean matches(Class<?>[] paramTypes, Object[] args) {
@@ -278,8 +314,14 @@ public final class McReflect {
             return "<missing>";
         }
         StringBuilder sb = new StringBuilder(type.getName()).append(": ");
+        Method[] methods;
+        try {
+            methods = type.getMethods();
+        } catch (Throwable t) {
+            return sb.append("<methods unavailable: ").append(t.getClass().getSimpleName()).append('>').toString();
+        }
         int n = 0;
-        for (Method m : type.getMethods()) {
+        for (Method m : methods) {
             if (m.isSynthetic() || m.getDeclaringClass() == Object.class) {
                 continue;
             }
@@ -287,15 +329,19 @@ public final class McReflect {
                 sb.append("...");
                 break;
             }
-            sb.append(m.getName()).append('(');
-            Class<?>[] ps = m.getParameterTypes();
-            for (int i = 0; i < ps.length; i++) {
-                if (i > 0) {
-                    sb.append(',');
+            try {
+                sb.append(m.getName()).append('(');
+                Class<?>[] ps = m.getParameterTypes();
+                for (int i = 0; i < ps.length; i++) {
+                    if (i > 0) {
+                        sb.append(',');
+                    }
+                    sb.append(ps[i].getSimpleName());
                 }
-                sb.append(ps[i].getSimpleName());
+                sb.append(") ");
+            } catch (Throwable t) {
+                sb.append("<signature unavailable> ");
             }
-            sb.append(") ");
         }
         return sb.toString();
     }
