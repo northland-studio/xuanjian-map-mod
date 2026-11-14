@@ -84,7 +84,7 @@ public class GisMainScreen extends Screen {
 
     private void computeLayout() {
         pw = Math.max(420, Math.min(this.width - 24, 620));
-        ph = Math.max(280, Math.min(this.height - 24, 380));
+        ph = Math.max(280, Math.min(this.height - 24, 440));
         px = (this.width - pw) / 2;
         py = (this.height - ph) / 2;
         contentX = px + 8 + UiKit.NAV_W + 8;
@@ -546,24 +546,28 @@ public class GisMainScreen extends Screen {
         line(g, "次/分钟 · chunk/批", fieldX + 140, y + 5, UiKit.TEXT_MUTED);
         y += row;
         label(g, "采集间隔/半径/步长", fieldX - 6, y);
-        y += row + 20;
+        // 提示文字放在 OAuth 按钮行下方，避免与按钮/输入框重叠
+        y = contentY + 144;
         line(g, "上传限速与服务端 60 次/分钟对齐；采集半径过大反而浪费 CPU 与带宽。",
                 contentX, y, UiKit.TEXT_MUTED);
-        y += 12;
+        y += 14;
         GisClient client = GisClient.get();
         boolean loggedIn = client != null && client.tokenStore().loggedIn();
         if (loggedIn) {
             String nickname = client.tokenStore().nickname();
             line(g, "OAuth：已登录" + (nickname == null || nickname.isBlank() ? "" : "（" + nickname + "）")
                     + " · 写权限由服务端 gis.submit 判定", contentX, y, UiKit.SUCCESS);
+            y += 14;
+            line(g, "token 过期会自动刷新；上传被拒（forbidden）时「数据」页会显示缺少的权限名。",
+                    contentX, y, UiKit.TEXT_MUTED);
         } else {
             line(g, "OAuth 登录：① 点「登录 OAuth」→ 链接自动复制到剪贴板（也打印在日志）；"
                     + "② 浏览器打开并登录，回调页会显示 code；③ 复制 code 后点「完成登录」。",
                     contentX, y, UiKit.WARNING);
+            y += 14;
+            line(g, "code 容错：可直接粘贴 code、code=xxx 或整段回调 URL；scope read:user read:member。",
+                    contentX, y, UiKit.TEXT_MUTED);
         }
-        y += 12;
-        line(g, "code 容错：可直接粘贴 code、code=xxx 或整段回调 URL；scope read:user read:member。",
-                contentX, y, UiKit.TEXT_MUTED);
     }
 
     private void label(GuiGraphicsExtractor g, String text, int rightX, int boxY) {
