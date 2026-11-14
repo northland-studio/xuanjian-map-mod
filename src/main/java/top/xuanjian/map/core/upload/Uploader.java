@@ -140,8 +140,9 @@ public final class Uploader {
      * @return 新建任务数
      */
     public int buildJobs(WorldSession session) {
+        // 只自动重排 CAPTURED/QUEUED；FAILED 需要用户手动「重试上传」，避免坏数据无限重传
         List<GisStore.PendingChunk> pending =
-                store.pendingChunks(session.worldId(), session.dimension(), limits.maxPlanChunks());
+                store.pendingChunks(session.worldId(), session.dimension(), limits.maxPlanChunks(), false);
         if (pending.isEmpty()) {
             return 0;
         }
