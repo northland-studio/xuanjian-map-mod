@@ -287,7 +287,7 @@ public class GisMainScreen extends Screen {
         this.addRenderableWidget(Buttons.of(contentX + contentW - 108, codeY, 108, 18,
                 "登录（输入框）", this::oauthCompleteFromInput));
 
-        int bottom = py + ph - 16;
+        int bottom = py + ph - 20;
         this.addRenderableWidget(Buttons.of(contentX, bottom, 76, UiKit.BTN_H, "保存", this::saveSettings));
         this.addRenderableWidget(Buttons.of(contentX + 82, bottom, 76, UiKit.BTN_H, "重置", () -> {
             GisClient c = GisClient.get();
