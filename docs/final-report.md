@@ -9,8 +9,8 @@
 
 | 分支 | Minecraft | Java | Loom | Fabric API | Gradle | Build | Client GameTest |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `26` | 26.2 | 25 | `net.fabricmc.fabric-loom` 1.17-SNAPSHOT | 0.156.0+26.2 | 9.5.1（wrapper） | ✅ | ✅ 10 张截图 |
-| `1.21` | 1.21.11 | 21 | `net.fabricmc.fabric-loom-remap` 1.17-SNAPSHOT | 0.141.3+1.21.11 | 9.5.1（wrapper） | ✅ | ✅ 10 张截图 |
+| `26` | 26.2 | 25 | `net.fabricmc.fabric-loom` 1.17-SNAPSHOT | 0.156.0+26.2 | 9.5.1（wrapper） | ✅ | ✅ 12 张截图 |
+| `1.21` | 1.21.11 | 21 | `net.fabricmc.fabric-loom-remap` 1.17-SNAPSHOT | 0.141.3+1.21.11 | 9.5.1（wrapper） | ✅ | ✅ 12 张截图 |
 
 版本未做任何“顺手升级”，与 `xuanjian-mod` 现有两条分支一致；版本差异集中在
 `src/client/.../compat|gui|hud` 适配层，`core/`、`net/`、采集、上传、SQLite、zstd 两分支完全共享。
@@ -29,7 +29,7 @@
 | build-26 | `xuanjianmap-26-jars` | 模组 jar（含 sqlite-jdbc/aircompressor jar-in-jar） |
 | build-26 | `xuanjianmap-26-test-reports` | JUnit XML + HTML 报告 |
 | build-26 | `xuanjianmap-26-build-log` | 完整构建日志（失败时含关键错误行） |
-| gui-gametest-26 | `gis-gametest-screenshots-26` | **10 张 PNG 截图** |
+| gui-gametest-26 | `gis-gametest-screenshots-26` | **12 张 PNG 截图** |
 | gui-gametest-26 | `gis-gametest-logs-26` | gametest.log + run/logs + 报告 |
 | build-121 | `xuanjianmap-121-jars` / `-test-reports` / `-build-log` | 同上（1.21） |
 | gui-gametest-121 | `gis-gametest-screenshots-121` / `-logs-121` | 同上（1.21） |
@@ -37,6 +37,8 @@
 截图（两分支一致，`build/run/clientGameTest/screenshots/`）：
 `1-gis-overview-empty`（空数据态）/ `2-layers` / `3-worlds` / `4-data-status` / `5-settings` /
 `6-overlay-map`（自有叠加渲染）/ `7-hud-preview`（HUD 展开+无道路紧凑态）/
+**`5b-settings-oauth-unlogged`（设置页 OAuth 未登录按钮）** /
+**`5c-settings-oauth-link`（点「登录 OAuth」后链接已复制到剪贴板 + 操作提示）** /
 **`8-inworld-hud`（真实单人世界内 HUD）** / **`9-inworld-overlay`（世界内 Overlay 图层）** / `10-inworld-data-status`。
 
 `8-inworld-hud` 中可见：城区=青云城区、道路=中央大道、坐标、维度=主世界(overworld)、附近 Marker、
@@ -57,7 +59,7 @@
 | HUD | ✅ | 默认常驻；`=` 展开/收起；城区/道路/X-Y-Z/Dimension；无道路严格 `当前城区 · 无道路 · X/Y/Z`；进入新区/道路本地提示；不上传实时位置；空间索引 + 250ms 节流 |
 | 自有 Overlay Renderer | ✅ | 城区多边形 / 道路（真实宽度）/ Marker / 其他；图层开关；按钮缩放居中；独立于 Xaero |
 | GIS 设置页 | ✅ | API/服务器 Key、上传与限速、采集间隔/半径/步长、HUD、图层开关、缓存清理、重试上传、OAuth 登录/退出、调试 |
-| OAuth2 PKCE | ✅ | authorize URL + code 兑换 + refresh 一次性轮换；token 本地 600 权限存储；RFC 7636 向量单测 |
+| OAuth2 PKCE | ✅ | **游戏内闭环**：设置页「登录 OAuth」自动复制授权链接到剪贴板 → 浏览器登录拿 code →「完成登录（读取剪贴板 code）」；code 容错（纯 code/code=/回调 URL）；错误中文化（invalid_grant 等）；昵称显示与持久化；refresh 一次性轮换；RFC 7636 向量单测 |
 | 权限 | ✅ | 客户端不做管理员名单；写权限全部由服务端 `gis.submit` 判定，403 显示缺少的权限名 |
 
 ## 4. 契约对齐与 API 差异（以生产 contract 为准）

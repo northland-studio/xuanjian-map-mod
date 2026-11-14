@@ -40,7 +40,7 @@ Minecraft **Fabric 客户端模组**，是玄剑世界地理信息系统（Xuanj
 
 - `.github/workflows/build-26.yml` / `build-121.yml`：编译 + 单元测试 + mock 契约集成测试 + jar/报告 artifact
 - `.github/workflows/gui-gametest-26.yml` / `gui-gametest-121.yml`：
-  xvfb 启动客户端 → 建测试世界 → 采集/缓存/HUD/叠加（注入本地 mock 对象）→ 逐页截图 artifact（10 张）
+  xvfb 启动客户端 → 建测试世界 → 采集/缓存/HUD/叠加（注入本地 mock 对象）+ OAuth 设置页 → 逐页截图 artifact（12 张）
 
 最近一次双版本全绿：
 [26 Build](https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625114831) ·

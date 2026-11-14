@@ -42,7 +42,9 @@
 7. 注入本地 mock GIS 对象（district/road/marker）→ 断言 HUD 识别城区（Point-in-Polygon）
    与道路（宽度缓冲区）→ 截图 `8-inworld-hud`（游戏内真实 HUD + 位置变化提示）、
    `9-inworld-overlay`（世界内自有 Overlay 图层）、`10-inworld-data-status`；
-8. 断言每张截图不是纯色（采样色数 ≥ 8）、结束时回到标题界面、截图数 ≥ 10。
+   另在设置页截图 `5b-settings-oauth-unlogged`（未登录 OAuth 按钮）与
+   `5c-settings-oauth-link`（点「登录 OAuth」：链接复制到剪贴板 + 提示；断言 URL 含 PKCE 参数）；
+8. 断言每张截图不是纯色（采样色数 ≥ 8）、结束时回到标题界面、截图数 ≥ 12。
 
 缺数据的语义在 gametest 与单元测试中都被保护：未加载区块/高度不可用 → 不可上传伪造数据。
 世界归档/无 ACTIVE 世界的行为在 mock 契约测试与 gametest 双重覆盖（本地模式不崩溃、不轰炸接口）。
