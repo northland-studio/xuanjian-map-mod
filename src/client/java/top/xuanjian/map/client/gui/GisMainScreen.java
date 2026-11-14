@@ -258,6 +258,17 @@ public class GisMainScreen extends Screen {
         this.addRenderableWidget(Buttons.of(contentX + (toggleW + 4) * 2, y, toggleW, 18,
                 config.hudEnabled() ? "HUD：开" : "HUD：关",
                 () -> toggleClient(GisClient::toggleHudEnabled)));
+        // v2 方块彩色地图数据（surfaceBlockMatrix）
+        this.addRenderableWidget(Buttons.of(contentX + (toggleW + 4) * 3, y, toggleW, 18,
+                config.captureSurfaceBlocks() ? "地表：开" : "地表：关", () -> {
+            GisClient c = GisClient.get();
+            if (c != null) {
+                c.config().captureSurfaceBlocks(!c.config().captureSurfaceBlocks());
+                c.saveConfig();
+                note("地表方块采集：" + (c.config().captureSurfaceBlocks() ? "已开启" : "已关闭"));
+            }
+            buildWidgets();
+        }));
 
         // OAuth 登录闭环（剪贴板不可用时可用下方输入框手动完成）
         boolean loggedIn = client.tokenStore().loggedIn();

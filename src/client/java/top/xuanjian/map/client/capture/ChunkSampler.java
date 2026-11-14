@@ -101,6 +101,7 @@ public final class ChunkSampler {
         Map<Object, String> blockIdCache = new java.util.IdentityHashMap<>();
         Map<Object, Integer> blockNumericCache = new java.util.IdentityHashMap<>();
         Map<Object, Integer> biomeIdCache = new java.util.IdentityHashMap<>();
+        Map<String, Integer> hashCache = new java.util.HashMap<>();
         Map<Integer, String> blockNames = new LinkedHashMap<>();
         Map<Integer, Long> histogram = new LinkedHashMap<>();
 
@@ -156,8 +157,10 @@ public final class ChunkSampler {
                         }
                         surfaceName = registryId(blockRegistry, candidate, blockIdCache);
                     }
-                    surfaceBlocks[idx] = isAirBlockName(surfaceName)
-                            ? BlockHash.NO_SURFACE : BlockHash.hash16(surfaceName);
+                    // hash 按资源名缓存：同一区块内每种方块只算一次 CRC32（每列仅一次 Map 查表）
+                    surfaceBlocks[idx] = hashCache.computeIfAbsent(
+                            surfaceName == null ? "" : surfaceName,
+                            name -> isAirBlockName(name) ? BlockHash.NO_SURFACE : BlockHash.hash16(name));
                 }
             }
         }
