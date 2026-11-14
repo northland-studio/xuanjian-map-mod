@@ -64,7 +64,22 @@ core/（main source set，纯 Java，无 Minecraft 依赖，单元测试覆盖�
 见 `docs/xaero-integration.md`：目标版本 Xaero 无公开 API，且规范禁止篡改其缓存或以其私有
 格式作为上传标准。因此采集只来自 Minecraft 原生数据，叠加层是自有渲染。
 
-## 5. 双版本适配
+## 5. 本地模式（世界未注册 / 归档 / 未登录）
+
+世界绑定失败不是错误路径，而是一等状态：`WorldSession.registered=false` 时
+
+- 采集、HUD（城区/道路/XYZ/维度）、Overlay 全部照常，使用本地缓存；
+- 上传与同步引擎直接跳过（零请求），UI 显示暂停原因；
+- 绑定失败按次数退避（60s→300s），避免接口轰炸；手动刷新重置；
+- 服务器世界恢复 ACTIVE 后，下次 bootstrap 或手动刷新自动恢复上传。
+
+## 6. 压缩方案
+
+契约允许 `zstd|gzip|deflate|identity`。客户端默认 **zstd**，使用纯 Java 的 aircompressor
+（jar-in-jar 打包），不需要 native 库；启动自检失败会自动降级 deflate。压缩只在后台上传线程执行，
+结果受 4MiB（压缩后）/8MiB（解压后）限制前置校验。
+
+## 7. 双版本适配
 
 | 差异点 | 26 | 1.21.11 |
 | --- | --- | --- |

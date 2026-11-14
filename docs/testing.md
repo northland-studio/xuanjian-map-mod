@@ -22,7 +22,8 @@
 | `HudTextTest` | **无道路时严格 `当前城区 · 无道路 · X/Y/Z`**、展开态四要素、进入城区/道路提示 |
 | `ChunkBatchCodecTest` | XJGIS 头/小端布局、`-32768` 缺口保留、biome 0xFFFF、坏包拒绝、压缩收益 |
 | `UploaderTest` | 增量只传 missing、幂等键复用、指数退避、429 Retry-After、永久失败保留数据、未绑定世界不上传、手动重试 |
-| `HttpGisApiMockTest` | **mock 服务端契约集成测试**：真实 HTTP 往返，校验 Bearer/`X-GIS-Contract`/`Content-Encoding: deflate`/`Idempotency-Key` 字符集、二进制可被服务端按契约解出、重复幂等重放 `duplicate:true`、错误码映射（429/403+required/400+chunkIndex）、sync 对象+tombstone+游标、bbox/coverage |
+| `HttpGisApiMockTest` | **mock 服务端契约集成测试**：真实 HTTP 往返，校验 Bearer/`X-GIS-Contract`/`Content-Encoding`/`Idempotency-Key` 字符集、二进制可被服务端按契约解出（含 blockHist/-32768 缺口）、重复幂等重放 `duplicate:true`、错误码映射（429/403+required/400+chunkIndex/409 world_archived）、**无 ACTIVE 世界（全部 ARCHIVED）→ 客户端本地模式**、sync 对象+tombstone+游标、bbox/coverage |
+| `DimensionsTest` | 维度归一化、生产契约 code（overworld0/nether1/end2/custom3）、`ResourceKey.toString()` 清洗（HUD 维度 bug 回归） |
 | `SqliteGisStoreTest` | SQLite CRUD/统计/任务状态/对象与 tombstone/cursor/世界注册/清缓存、降级到内存存储 |
 | `GisConfigTest` | 默认值、保存/读取、范围夹取、坏配置回退、重置 |
 | `PkceOAuthTest` | RFC 7636 官方测试向量、verifier 字符集、authorize URL 参数、token 过期判断 |
@@ -36,11 +37,13 @@
 3. 逐页切换并截图：`2-layers`、`3-worlds`、`4-data-status`、`5-settings`；
 4. 打开自有 Overlay 地图截图 `6-overlay-map`（Xaero 不在测试环境，用自有渲染方案验收）；
 5. HUD 预览截图 `7-hud-preview`（含展开态与「无道路」紧凑态）；
-6. **真实创建单人测试世界**：等待区块渲染 → 断言采集 chunk 数 > 0（落 SQLite）→ 截图
+6. **真实创建单人测试世界**：等待区块渲染 → 断言采集 chunk 数 > 0（落 SQLite）、
+   维度解析为 overworld、会话处于本地模式（CI 无生产 API）且上传文案含「暂停」→ 截图
    `8-inworld-hud`（游戏内真实 HUD）；再打开数据页截图 `9-inworld-data-status`；
 7. 断言每张截图不是纯色（采样色数 ≥ 8）、结束时回到标题界面、截图数 ≥ 8。
 
 缺数据的语义在 gametest 与单元测试中都被保护：未加载区块/高度不可用 → 不可上传伪造数据。
+世界归档/无 ACTIVE 世界的行为在 mock 契约测试与 gametest 双重覆盖（本地模式不崩溃、不轰炸接口）。
 
 ## 4. 失败排查
 
