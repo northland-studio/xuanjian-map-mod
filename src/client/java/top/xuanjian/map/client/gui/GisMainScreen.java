@@ -267,21 +267,52 @@ public class GisMainScreen extends Screen {
             buildWidgets();
             note("已重置为默认配置并保存");
         }));
-        this.addRenderableWidget(Buttons.of(contentX + 164, bottom, 100, UiKit.BTN_H,
-                client.tokenStore().hasAccessToken() ? "退出登录" : "登录 OAuth", () -> {
-                    GisClient c = GisClient.get();
-                    if (c == null) {
-                        return;
-                    }
-                    if (c.tokenStore().hasAccessToken()) {
-                        c.logout();
-                        note("已退出 OAuth 登录");
-                    } else {
-                        String url = c.beginLogin();
-                        note("请在浏览器打开授权链接（已打印到日志）");
-                        top.xuanjian.map.core.util.GisLog.info("oauth", "授权链接: " + url);
-                    }
-                }));
+
+        // OAuth 登录闭环：生成链接（自动复制到剪贴板）+ 从剪贴板读 code 完成登录
+        boolean loggedIn = client.tokenStore().loggedIn();
+        int oauthY = y + 26;
+        if (loggedIn) {
+            this.addRenderableWidget(Buttons.of(contentX, oauthY, 96, 18, "退出登录", () -> {
+                GisClient c = GisClient.get();
+                if (c != null) {
+                    c.logout();
+                }
+                note("已退出 OAuth 登录");
+                buildWidgets();
+            }));
+            this.addRenderableWidget(Buttons.of(contentX + 102, oauthY, 130, 18,
+                    "重新登录（生成链接）", this::oauthBegin));
+        } else {
+            this.addRenderableWidget(Buttons.of(contentX, oauthY, 96, 18, "登录 OAuth",
+                    this::oauthBegin));
+            this.addRenderableWidget(Buttons.of(contentX + 102, oauthY, 176, 18,
+                    "完成登录（读取剪贴板 code）", this::oauthComplete));
+        }
+    }
+
+    private void oauthBegin() {
+        GisClient client = GisClient.get();
+        if (client == null) {
+            return;
+        }
+        GisClient.LoginBegin begin = client.beginLoginAndCopy();
+        if (begin.copied()) {
+            note("授权链接已复制到剪贴板：请在浏览器打开并登录，完成后复制回调页上的 code 回游戏，"
+                    + "再点「完成登录（读取剪贴板 code）」");
+        } else {
+            note("授权链接已生成但剪贴板写入失败（已打印到日志，可手动复制）", UiKit.WARNING);
+        }
+        buildWidgets();
+    }
+
+    private void oauthComplete() {
+        GisClient client = GisClient.get();
+        if (client == null) {
+            return;
+        }
+        GisClient.LoginResult result = client.completeLoginFromClipboard();
+        note(result.message(), result.ok() ? UiKit.SUCCESS : UiKit.DANGER);
+        buildWidgets();
     }
 
     private void toggleClient(java.util.function.Consumer<GisClient> action) {
@@ -492,7 +523,19 @@ public class GisMainScreen extends Screen {
         y += row + 20;
         line(g, "上传限速与服务端 60 次/分钟对齐；采集半径过大反而浪费 CPU 与带宽。", contentX, y, UiKit.TEXT_MUTED);
         y += 12;
-        line(g, "OAuth 使用统一账号（PKCE），scope read:user read:member；写权限由服务端 gis.submit 判定。",
+        GisClient client = GisClient.get();
+        boolean loggedIn = client != null && client.tokenStore().loggedIn();
+        if (loggedIn) {
+            String nickname = client.tokenStore().nickname();
+            line(g, "OAuth：已登录" + (nickname == null || nickname.isBlank() ? "" : "（" + nickname + "）")
+                    + " · 写权限由服务端 gis.submit 判定", contentX, y, UiKit.SUCCESS);
+        } else {
+            line(g, "OAuth 登录：① 点「登录 OAuth」→ 链接自动复制到剪贴板（也打印在日志）；"
+                    + "② 浏览器打开并登录，回调页会显示 code；③ 复制 code 后点「完成登录」。",
+                    contentX, y, UiKit.WARNING);
+        }
+        y += 12;
+        line(g, "code 容错：可直接粘贴 code、code=xxx 或整段回调 URL；scope read:user read:member。",
                 contentX, y, UiKit.TEXT_MUTED);
     }
 
@@ -529,6 +572,22 @@ public class GisMainScreen extends Screen {
 
     public GisSnapshot currentSnapshot() {
         return snapshot;
+    }
+
+    /**
+     * gametest 钩子：触发「登录 OAuth」按钮流程（生成链接 + 复制剪贴板 + 提示），返回授权链接。
+     * 用于截图验收 OAuth 未登录状态与操作提示，不会真的完成登录。
+     */
+    public String triggerOAuthBeginForTest() {
+        GisClient client = GisClient.get();
+        if (client == null) {
+            return "";
+        }
+        GisClient.LoginBegin begin = client.beginLoginAndCopy();
+        note((begin.copied() ? "授权链接已复制到剪贴板" : "授权链接已生成（剪贴板写入失败，已打印日志）")
+                + "：请在浏览器打开并登录，完成后复制回调页 code 回到游戏完成登录");
+        buildWidgets();
+        return begin.url();
     }
 
     @Override

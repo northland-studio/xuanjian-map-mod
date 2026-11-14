@@ -3,6 +3,7 @@ package top.xuanjian.map.client;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import top.xuanjian.map.client.capture.ChunkCaptureService;
+import top.xuanjian.map.client.compat.ClipboardCompat;
 import top.xuanjian.map.client.compat.McReflect;
 import top.xuanjian.map.client.compat.XaeroCompat;
 import top.xuanjian.map.core.compress.BlobCodecs;
@@ -16,6 +17,7 @@ import top.xuanjian.map.core.model.RegisteredWorld;
 import top.xuanjian.map.core.net.ApiException;
 import top.xuanjian.map.core.net.GisApi;
 import top.xuanjian.map.core.net.HttpGisApi;
+import top.xuanjian.map.core.net.OAuthCodeParser;
 import top.xuanjian.map.core.net.OAuthTokens;
 import top.xuanjian.map.core.net.ObjectJson;
 import top.xuanjian.map.core.net.PkceOAuth;
@@ -76,6 +78,7 @@ public final class GisClient {
     private volatile WorldSession session = WorldSession.NONE;
     private volatile GisSnapshot snapshot = GisSnapshot.EMPTY;
     private volatile String lastSyncError = "";
+    private volatile String lastUploadError = "";
     private volatile long lastSyncAt;
     private volatile boolean syncing;
     private volatile boolean binding;
@@ -368,6 +371,12 @@ public final class GisClient {
         netExec.submit(() -> {
             try {
                 Uploader.TickResult result = uploader.tick(session);
+                if (result.uploadedJobs() > 0) {
+                    lastUploadError = "";
+                } else if (!result.lastError().isBlank()) {
+                    // 保留最近一次上传错误（403 forbidden(required) 会带“缺少权限: gis.submit”）
+                    lastUploadError = result.lastError();
+                }
                 if (result.uploadedJobs() > 0 || result.planned() > 0 || result.failedJobs() > 0) {
                     GisLog.info(TAG, "上传: planned=" + result.planned()
                             + ", uploaded=" + result.uploadedJobs()
@@ -457,16 +466,24 @@ public final class GisClient {
             }
             GisStore.CacheStats stats = new GisStore.CacheStats(chunks, jobs, objectCount,
                     store.dbBytes(), store.backend(), store.lastUploadAt(), lastSyncError);
-            String tokenState = tokenStore.hasAccessToken()
-                    ? "OAuth：已登录（写权限由服务端 gis.submit 判定）"
-                    : "OAuth：未登录（不能上传，本地功能可用）";
+            String tokenState;
+            if (!tokenStore.loggedIn()) {
+                tokenState = "OAuth：未登录（点「登录 OAuth」后按提示完成，上传需要登录）";
+            } else {
+                String nickname = tokenStore.nickname();
+                boolean expired = tokenStore.tokens().isExpired(System.currentTimeMillis());
+                tokenState = "OAuth：已登录"
+                        + (nickname == null || nickname.isBlank() ? "" : "（" + nickname + "）")
+                        + (expired ? " · access_token 已过期（将自动刷新）" : " · 有效");
+            }
+            String combinedError = !lastUploadError.isBlank() ? lastUploadError : lastSyncError;
             BootstrapInfo info = bootstrap;
             String contractHint = info == null ? "契约 v1（未获取 limits）"
                     : "契约 v" + info.contract() + " · plan≤" + info.limits().maxPlanChunks()
                     + " · 单批≤" + info.limits().maxBatchChunks()
                     + " · 压缩≤" + (info.limits().maxCompressedBytes() / 1024 / 1024) + "MiB";
             snapshot = new GisSnapshot(current, info, store.worlds(), stats, cachedLocation, tokenState,
-                    lastSyncError, lastSyncAt, syncing, xaeroMode, config.hudExpanded(),
+                    combinedError, lastSyncAt, syncing, xaeroMode, config.hudExpanded(),
                     config.apiBase(), config.serverKey(), capturedThisSession, contractHint);
         } catch (RuntimeException e) {
             GisLog.error(TAG, "刷新快照失败", e);
@@ -571,26 +588,96 @@ public final class GisClient {
     }
 
 
-    /* ==================== OAuth 登录 ==================== */
+    /* ==================== OAuth 登录（UI 闭环） ==================== */
+
+    /** 登录链接生成结果。 */
+    public record LoginBegin(boolean copied, String url) {
+    }
+
+    /** 登录结果（用于 UI 提示，成功时带昵称）。 */
+    public record LoginResult(boolean ok, String message, String nickname) {
+    }
+
+    /**
+     * 生成 PKCE 授权链接并复制到系统剪贴板（同时打印日志）。
+     *
+     * <p>之后用户在浏览器打开链接登录，服务端回调页会展示 code；用户复制 code 后
+     * 点「完成登录（读取剪贴板 code）」即可闭环。
+     */
+    public LoginBegin beginLoginAndCopy() {
+        String url = beginLogin();
+        boolean copied = ClipboardCompat.write(url);
+        if (copied) {
+            GisLog.info(TAG, "OAuth 授权链接已复制到剪贴板: " + url);
+        } else {
+            GisLog.info(TAG, "OAuth 授权链接（剪贴板写入失败，请手动复制）: " + url);
+        }
+        return new LoginBegin(copied, url);
+    }
 
     public String beginLogin() {
         loginVerifier = oauth.newVerifier();
         return oauth.authorizeUrl(loginVerifier, "xjm");
     }
 
-    public OAuthTokens finishLogin(String code) {
-        try {
-            OAuthTokens tokens = oauth.exchangeCode(code.trim(), loginVerifier);
-            refreshSnapshotSoon();
-            return tokens;
-        } catch (ApiException e) {
-            GisLog.warn(TAG, "登录失败: " + e.describe());
-            return null;
+    /** 从系统剪贴板读取 code 并完成登录（容错：纯 code / code=… / 完整回调 URL）。 */
+    public LoginResult completeLoginFromClipboard() {
+        String clipboard = ClipboardCompat.read();
+        if (clipboard == null || clipboard.isBlank()) {
+            return new LoginResult(false, "剪贴板为空：请先在浏览器复制回调页上的 code", "");
         }
+        return completeLoginWithCode(clipboard);
+    }
+
+    /**
+     * 用给定文本完成登录（供剪贴板流程与测试调用）。
+     *
+     * @param rawCodeOrUrl 纯 code、`code=xxx` 或完整回调 URL
+     */
+    public LoginResult completeLoginWithCode(String rawCodeOrUrl) {
+        if (loginVerifier == null || loginVerifier.isBlank()) {
+            return new LoginResult(false,
+                    "请先点「登录 OAuth」生成授权链接（PKCE 校验需要本次会话的 code_verifier）", "");
+        }
+        String code = OAuthCodeParser.extractCode(rawCodeOrUrl);
+        if (code == null || code.isBlank()) {
+            return new LoginResult(false,
+                    "未在剪贴板中找到授权码 code（可粘贴 code 本身或完整回调 URL）", "");
+        }
+        try {
+            OAuthTokens tokens = oauth.exchangeCode(code, loginVerifier);
+            String nickname = oauth.fetchNickname();
+            if (nickname == null) {
+                nickname = "";
+            }
+            tokenStore.save(tokens, nickname);
+            loginVerifier = "";
+            GisLog.info(TAG, "OAuth 登录成功" + (nickname.isBlank() ? "" : "：" + nickname));
+            // 登录后重新绑定世界（bootstrap/上传需要 Bearer）
+            rebind();
+            refreshSnapshotSoon();
+            return new LoginResult(true,
+                    "已登录" + (nickname.isBlank() ? "（服务端未返回昵称）" : "：" + nickname), nickname);
+        } catch (ApiException e) {
+            GisLog.warn(TAG, "OAuth 登录失败: code=" + e.code() + ", " + e.getMessage());
+            String message = e.getMessage();
+            if (message == null || message.isBlank()) {
+                message = "登录失败（" + e.code() + "）";
+            }
+            return new LoginResult(false, message, "");
+        }
+    }
+
+    /** 旧接口保留（供命令行/调试）：用 code 兑换 token，失败返回 null。 */
+    public OAuthTokens finishLogin(String code) {
+        LoginResult result = completeLoginWithCode(code);
+        return result.ok() ? tokenStore.tokens() : null;
     }
 
     public void logout() {
         oauth.logout();
+        loginVerifier = "";
+        rebind();
         refreshSnapshot();
     }
 

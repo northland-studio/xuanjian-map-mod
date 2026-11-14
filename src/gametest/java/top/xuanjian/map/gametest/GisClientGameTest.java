@@ -106,6 +106,21 @@ public class GisClientGameTest implements FabricClientGameTest {
             shots.add(capture(context, page[1]));
         }
 
+        // ---------- 2b) 设置页 OAuth 未登录闭环（按钮状态 + 点击登录 OAuth 的提示） ----------
+        Boolean settingsOk = context.computeOnClient(client -> main.showPage("设置"));
+        context.waitTicks(8);
+        if (!Boolean.TRUE.equals(settingsOk)) {
+            throw new AssertionError("无法切换到设置页（OAuth 截图）");
+        }
+        shots.add(capture(context, "5b-settings-oauth-unlogged"));
+        String authUrl = context.computeOnClient(client -> main.triggerOAuthBeginForTest());
+        context.waitTicks(8);
+        if (authUrl == null || authUrl.isBlank() || !authUrl.contains("/api/oauth/authorize")) {
+            throw new AssertionError("OAuth 授权链接生成失败: " + authUrl);
+        }
+        LOGGER.info("[gametest] OAuth 授权链接已生成（长度 {}，含 PKCE 参数）", authUrl.length());
+        shots.add(capture(context, "5c-settings-oauth-link"));
+
         // ---------- 3) 自有 GIS Overlay 渲染 ----------
         context.setScreen(() -> new GisMapScreen(null));
         context.waitForScreen(GisMapScreen.class);
@@ -242,8 +257,8 @@ public class GisClientGameTest implements FabricClientGameTest {
         for (String shot : shots) {
             LOGGER.info("[gametest] 截图: {}", shot);
         }
-        if (shots.size() < 10) {
-            throw new AssertionError("截图数量不足（" + shots.size() + " < 10）");
+        if (shots.size() < 12) {
+            throw new AssertionError("截图数量不足（" + shots.size() + " < 12）");
         }
         LOGGER.info("[gametest] 全部通过，共 {} 张截图", shots.size());
     }
