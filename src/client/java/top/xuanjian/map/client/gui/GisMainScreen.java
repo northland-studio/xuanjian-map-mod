@@ -346,8 +346,12 @@ public class GisMainScreen extends Screen {
     }
 
     private void note(String message) {
+        note(message, UiKit.SUCCESS);
+    }
+
+    private void note(String message, int color) {
         toast = message == null ? "" : message;
-        toastColor = UiKit.SUCCESS;
+        toastColor = color;
         toastUntil = System.currentTimeMillis() + 5000;
         refreshData();
     }
@@ -524,7 +528,11 @@ public class GisMainScreen extends Screen {
     }
 
     private void line(GuiGraphicsExtractor g, String text, int y, int color) {
-        UiKit.text(g, this.font, UiKit.ellipsis(this.font, text, contentW - 4), contentX, y, color);
+        line(g, text, contentX, y, color);
+    }
+
+    private void line(GuiGraphicsExtractor g, String text, int x, int y, int color) {
+        UiKit.text(g, this.font, UiKit.ellipsis(this.font, text, contentW - 4), x, y, color);
     }
 
     private boolean pageYOverflow(int y) {

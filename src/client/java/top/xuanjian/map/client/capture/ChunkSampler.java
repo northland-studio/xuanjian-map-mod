@@ -88,7 +88,7 @@ public final class ChunkSampler {
         boolean anyHeight = false;
         boolean anyBiome = false;
 
-        Object blockPosClassLocal = blockPosClass;
+        Class<?> blockPosClassLocal = blockPosClass;
         Map<Object, String> blockIdCache = new IdentityHashMap<>();
         Map<Object, Integer> biomeIdCache = new IdentityHashMap<>();
 
