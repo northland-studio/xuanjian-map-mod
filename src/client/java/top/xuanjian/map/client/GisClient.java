@@ -351,6 +351,15 @@ public final class GisClient {
         locator.replaceDimension(dimension, objects);
     }
 
+    /** 从本地 SQLite 重新加载 GIS 对象到内存空间索引（测试/手动刷新用）。 */
+    public void reloadLocatorFromStore() {
+        WorldSession current = session;
+        if (current == null || current.dimension() == null || current.dimension().isBlank()) {
+            return;
+        }
+        reloadLocator(current.worldId(), current.dimension());
+    }
+
     private void maybeUpload() {
         if (uploading || !config.uploadEnabled() || !session.canUpload()) {
             return;
