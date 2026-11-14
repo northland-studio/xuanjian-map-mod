@@ -38,9 +38,11 @@
 4. 打开自有 Overlay 地图截图 `6-overlay-map`（Xaero 不在测试环境，用自有渲染方案验收）；
 5. HUD 预览截图 `7-hud-preview`（含展开态与「无道路」紧凑态）；
 6. **真实创建单人测试世界**：等待区块渲染 → 断言采集 chunk 数 > 0（落 SQLite）、
-   维度解析为 overworld、会话处于本地模式（CI 无生产 API）且上传文案含「暂停」→ 截图
-   `8-inworld-hud`（游戏内真实 HUD）；再打开数据页截图 `9-inworld-data-status`；
-7. 断言每张截图不是纯色（采样色数 ≥ 8）、结束时回到标题界面、截图数 ≥ 8。
+   维度解析为 overworld、会话处于本地模式（CI 无生产 API）且上传文案含「暂停」；
+7. 注入本地 mock GIS 对象（district/road/marker）→ 断言 HUD 识别城区（Point-in-Polygon）
+   与道路（宽度缓冲区）→ 截图 `8-inworld-hud`（游戏内真实 HUD + 位置变化提示）、
+   `9-inworld-overlay`（世界内自有 Overlay 图层）、`10-inworld-data-status`；
+8. 断言每张截图不是纯色（采样色数 ≥ 8）、结束时回到标题界面、截图数 ≥ 10。
 
 缺数据的语义在 gametest 与单元测试中都被保护：未加载区块/高度不可用 → 不可上传伪造数据。
 世界归档/无 ACTIVE 世界的行为在 mock 契约测试与 gametest 双重覆盖（本地模式不崩溃、不轰炸接口）。

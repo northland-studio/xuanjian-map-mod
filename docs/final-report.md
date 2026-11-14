@@ -2,25 +2,25 @@
 
 - 仓库：https://github.com/northland-studio/xuanjian-map-mod （PUBLIC，默认分支 `26`）
 - 服务端契约来源：`GET https://xuanjian.top/api/gis/client/contract`（contract:1）
-- 本报告对应提交：`26` 分支 `bcbc971` 之后（本地模式/维度修复/文档），`1.21` 分支同步
+- 本报告对应提交：`26` 分支 `dbd6e0f` 之后、`1.21` 分支 `a29a270` 之后（mock 对象注入 + 文档）
 - **本机未执行任何 Gradle 命令**：全部构建/单元测试/GameTest/GUI 截图在 GitHub Actions 完成
 
 ## 1. 双版本矩阵（全部 Actions 绿）
 
 | 分支 | Minecraft | Java | Loom | Fabric API | Gradle | Build | Client GameTest |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `26` | 26.2 | 25 | `net.fabricmc.fabric-loom` 1.17-SNAPSHOT | 0.156.0+26.2 | 9.5.1（wrapper） | ✅ | ✅ 9 张截图 |
-| `1.21` | 1.21.11 | 21 | `net.fabricmc.fabric-loom-remap` 1.17-SNAPSHOT | 0.141.3+1.21.11 | 9.5.1（wrapper） | ✅ | ✅ 9 张截图 |
+| `26` | 26.2 | 25 | `net.fabricmc.fabric-loom` 1.17-SNAPSHOT | 0.156.0+26.2 | 9.5.1（wrapper） | ✅ | ✅ 10 张截图 |
+| `1.21` | 1.21.11 | 21 | `net.fabricmc.fabric-loom-remap` 1.17-SNAPSHOT | 0.141.3+1.21.11 | 9.5.1（wrapper） | ✅ | ✅ 10 张截图 |
 
 版本未做任何“顺手升级”，与 `xuanjian-mod` 现有两条分支一致；版本差异集中在
 `src/client/.../compat|gui|hud` 适配层，`core/`、`net/`、采集、上传、SQLite、zstd 两分支完全共享。
 
 ### Actions 运行链接（最近一次全绿）
 
-- 26 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43623983068
-- 26 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43623983118
-- 1.21 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43623914649
-- 1.21 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43623914625
+- 26 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625114831
+- 26 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625114826
+- 1.21 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625151516
+- 1.21 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625151522
 
 ## 2. Artifacts 清单
 
@@ -29,14 +29,19 @@
 | build-26 | `xuanjianmap-26-jars` | 模组 jar（含 sqlite-jdbc/aircompressor jar-in-jar） |
 | build-26 | `xuanjianmap-26-test-reports` | JUnit XML + HTML 报告 |
 | build-26 | `xuanjianmap-26-build-log` | 完整构建日志（失败时含关键错误行） |
-| gui-gametest-26 | `gis-gametest-screenshots-26` | **9 张 PNG 截图** |
+| gui-gametest-26 | `gis-gametest-screenshots-26` | **10 张 PNG 截图** |
 | gui-gametest-26 | `gis-gametest-logs-26` | gametest.log + run/logs + 报告 |
 | build-121 | `xuanjianmap-121-jars` / `-test-reports` / `-build-log` | 同上（1.21） |
 | gui-gametest-121 | `gis-gametest-screenshots-121` / `-logs-121` | 同上（1.21） |
 
 截图（两分支一致，`build/run/clientGameTest/screenshots/`）：
 `1-gis-overview-empty`（空数据态）/ `2-layers` / `3-worlds` / `4-data-status` / `5-settings` /
-`6-overlay-map`（自有叠加渲染）/ `7-hud-preview`（HUD 展开+无道路紧凑态）/ **`8-inworld-hud`（真实单人世界内 HUD）** / `9-inworld-data-status`。
+`6-overlay-map`（自有叠加渲染）/ `7-hud-preview`（HUD 展开+无道路紧凑态）/
+**`8-inworld-hud`（真实单人世界内 HUD）** / **`9-inworld-overlay`（世界内 Overlay 图层）** / `10-inworld-data-status`。
+
+`8-inworld-hud` 中可见：城区=青云城区、道路=中央大道、坐标、维度=主世界(overworld)、附近 Marker、
+上传「暂停（本地模式）」原因，以及聊天栏「进入 青云城区 · 中央大道」位置变化提示；
+`9-inworld-overlay` 中可见：城区多边形填充、按真实宽度绘制道路、Marker、玩家标记与图层统计。
 
 ## 3. 客户端功能清单
 
