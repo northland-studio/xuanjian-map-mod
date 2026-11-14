@@ -118,20 +118,6 @@ public final class SynchronizedStore implements GisStore {
     }
 
     @Override
-    public void putChunkLocal(ChunkLocal local) {
-        synchronized (lock) {
-            delegate.putChunkLocal(local);
-        }
-    }
-
-    @Override
-    public List<ChunkLocal> loadChunkLocals(long worldId, String dimension, int limit) {
-        synchronized (lock) {
-            return delegate.loadChunkLocals(worldId, dimension, limit);
-        }
-    }
-
-    @Override
     public long insertJob(JobRow job) {
         synchronized (lock) {
             return delegate.insertJob(job);
