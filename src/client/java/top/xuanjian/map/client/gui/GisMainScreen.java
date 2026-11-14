@@ -558,6 +558,14 @@ public class GisMainScreen extends Screen {
         line(g, "失败数据不删除：上传失败只改状态，可点「重试上传」继续；断网恢复后自动续传。",
                 y, UiKit.TEXT_MUTED);
         line(g, snapshot.contractHint(), y + 12, UiKit.TEXT_MUTED);
+        GisClient surfaceClient = GisClient.get();
+        if (surfaceClient != null) {
+            int surfaceBackfill = surfaceClient.surfaceBackfillCount();
+            line(g, "v2 地表方块：" + (surfaceClient.config().captureSurfaceBlocks()
+                            ? "采集已开启" : "采集关闭（等服务端支持后开启）")
+                            + (surfaceBackfill > 0 ? " · 待补采 " + surfaceBackfill + " 个旧区块" : ""),
+                    y + 24, UiKit.TEXT_MUTED);
+        }
     }
 
     private void renderSettings(GuiGraphicsExtractor g) {

@@ -6,12 +6,14 @@ import java.util.List;
 /**
  * 单区块采集样本（契约二进制里一个 chunk 段的内容）。
  *
- * <p>严格按 <b>生产契约</b>（{@code GET /api/gis/client/contract}）：
+ * <p>严格按<b>生产契约 v2</b>（{@code docs/gis-api.md} / {@code docs/gis-canvas-map.md}）：
  * <ul>
  *   <li>{@code sampleStep 1..4}，{@code sampleSize = 16 / sampleStep}；</li>
- *   <li>{@code heightMatrix i16[n*n]}，<b>-32768 表示无数据，必须保留缺口</b>，不得填 0；</li>
- *   <li>{@code biomeMatrix u16[n*n]} 可选，0xFFFF 表示未知；</li>
- *   <li>{@code blockHist} 可选：{@code u8 n} + {@code n*(u16 blockId, u32 count)}（方块类型直方图）。</li>
+ *   <li>{@code heightMatrix i16[n*n]}，<b>-32768 = 无数据，必须保留缺口</b>；</li>
+ *   <li>{@code biomeMatrix u16[n*n]} 可选，0xFFFF = 未知；</li>
+ *   <li>{@code blockHist} 可选：{@code u8 n + n*(u16 blockId,u32 count)}；</li>
+ *   <li><b>v2 新增</b> {@code surfaceBlockMatrix u16[n*n]}（flags bit3）：每列「地表方块」的
+ *       {@code CRC32(方块资源名)&0xFFFF}，0xFFFF = 无数据/空列（供浏览器渲染方块彩色地图）。</li>
  * </ul>
  *
  * @param chunkX        区块 X
@@ -22,11 +24,12 @@ import java.util.List;
  * @param maxY          有效高度最大值（含）
  * @param heights       高度矩阵，行优先：index = row * sampleSize + col
  * @param biomes        biome 注册表数字 ID 矩阵，-1 表示未知
- * @param blockHistogram 方块类型直方图（按契约 blockId/count），null 表示不上传
+ * @param blockHistogram 方块类型直方图（按契约 blockId/count），空表示不上传
+ * @param surfaceBlocks 地表方块 hash16 矩阵（0xFFFF = 无数据），null 表示不上传该可选字段
  */
 public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
                         short minY, short maxY, short[] heights, int[] biomes,
-                        List<BlockCount> blockHistogram) {
+                        List<BlockCount> blockHistogram, int[] surfaceBlocks) {
 
     public static final short NO_DATA = -32768;
     public static final int UNKNOWN_BIOME = 0xFFFF;
@@ -36,9 +39,19 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
     public static final int FLAG_HEIGHTS = 0x01;
     public static final int FLAG_BIOMES = 0x02;
     public static final int FLAG_BLOCK_HIST = 0x04;
+    /** v2：surfaceBlockMatrix（地表方块 hash16 矩阵）。 */
+    public static final int FLAG_SURFACE_BLOCKS = 0x08;
 
     /** blockHist 条目：方块注册表数字 ID 与出现次数。 */
     public record BlockCount(int blockId, long count) {
+    }
+
+    /** 兼容旧调用（无地表方块矩阵）。 */
+    public ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
+                     short minY, short maxY, short[] heights, int[] biomes,
+                     List<BlockCount> blockHistogram) {
+        this(chunkX, chunkZ, sampleStep, sampleSize, minY, maxY, heights, biomes,
+                blockHistogram, null);
     }
 
     public ChunkData {
@@ -58,6 +71,9 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
         }
         if (biomes != null && biomes.length != expected) {
             throw new IllegalArgumentException("biomes 长度必须为 " + expected);
+        }
+        if (surfaceBlocks != null && surfaceBlocks.length != expected) {
+            throw new IllegalArgumentException("surfaceBlocks 长度必须为 " + expected);
         }
         if (blockHistogram == null) {
             blockHistogram = List.of();
@@ -79,6 +95,10 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
         return !blockHistogram.isEmpty();
     }
 
+    public boolean hasSurfaceBlocks() {
+        return surfaceBlocks != null;
+    }
+
     /** 由实际含数据的矩阵重算 minY/maxY（全缺口时 0/0）。 */
     public static short[] computeMinMax(short[] heights) {
         int min = Integer.MAX_VALUE;
@@ -97,6 +117,7 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
     }
 
     /** 是否有缺口（覆盖度/缺数据提示用）。 */
+
     public boolean hasGaps() {
         for (short h : heights) {
             if (h == NO_DATA) {
@@ -114,6 +135,9 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
         if (hasBlockHistogram()) {
             flags |= FLAG_BLOCK_HIST;
         }
+        if (surfaceBlocks != null) {
+            flags |= FLAG_SURFACE_BLOCKS;
+        }
         return flags;
     }
 
@@ -130,7 +154,8 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
                 && minY == other.minY && maxY == other.maxY
                 && Arrays.equals(heights, other.heights)
                 && Arrays.equals(biomes, other.biomes)
-                && blockHistogram.equals(other.blockHistogram);
+                && blockHistogram.equals(other.blockHistogram)
+                && Arrays.equals(surfaceBlocks, other.surfaceBlocks);
     }
 
     @Override
@@ -140,6 +165,7 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
         result = 31 * result + sampleSize;
         result = 31 * result + Arrays.hashCode(heights);
         result = 31 * result + Arrays.hashCode(biomes);
+        result = 31 * result + Arrays.hashCode(surfaceBlocks);
         return result;
     }
 }

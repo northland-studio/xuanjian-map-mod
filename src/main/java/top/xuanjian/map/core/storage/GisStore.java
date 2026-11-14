@@ -121,6 +121,12 @@ public interface GisStore extends AutoCloseable {
 
     void deleteChunks(long worldId, String dimension);
 
+    /**
+     * v2 补采：本地已有、但 flags 缺少 surfaceBlockMatrix(bit3) 的区块坐标（x,z）。
+     * 服务端支持 v2 后由客户端在玩家靠近时重采并重传（同 chunk key upsert）。
+     */
+    List<int[]> chunksNeedingSurface(long worldId, String dimension, int limit);
+
     /** 写入区块本地扩展（结构/block entity/方块调色板；不参与上传）。 */
     void putChunkLocal(ChunkLocal local);
 

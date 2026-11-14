@@ -7,14 +7,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 单区块段（body）编解码，严格对齐生产契约：
+ * 单区块段（body）编解码，严格对齐生产契约 v2：
  *
  * <pre>
  * chunkX i32, chunkZ i32, sampleStep u8, sampleSize u8, minY i16, maxY i16,
- * flags u8(bit0 高度矩阵 / bit1 biome / bit2 blockHist),
+ * flags u8(bit0 高度矩阵 / bit1 biome / bit2 blockHist / bit3 surfaceBlockMatrix),
  * heightMatrix i16[n*n]（-32768 = 无数据，保留缺口）,
  * [biomeMatrix u16[n*n]]（0xFFFF = 未知）,
- * [blockHist: u8 n + n*(u16 blockId, u32 count)]
+ * [blockHist: u8 n + n*(u16 blockId, u32 count)],
+ * [surfaceBlockMatrix u16[n*n]]（v2，地表方块 hash16，0xFFFF = 无数据/空列）
  * </pre>
  */
 public final class ChunkBodyCodec {
@@ -23,7 +24,7 @@ public final class ChunkBodyCodec {
     }
 
     public static byte[] encodeBody(ChunkData data) {
-        ByteWriter w = new ByteWriter(64 + data.cells() * 4);
+        ByteWriter w = new ByteWriter(64 + data.cells() * 6);
         w.i32(data.chunkX());
         w.i32(data.chunkZ());
         w.u8(data.sampleStep());
@@ -47,6 +48,12 @@ public final class ChunkBodyCodec {
                 ChunkData.BlockCount entry = histogram.get(i);
                 w.u16(entry.blockId() & 0xFFFF);
                 w.u32(entry.count());
+            }
+        }
+        // v2：surfaceBlockMatrix 必须紧跟 blockHist 之后
+        if (data.hasSurfaceBlocks()) {
+            for (int hash : data.surfaceBlocks()) {
+                w.u16(hash & 0xFFFF);
             }
         }
         return w.toByteArray();
@@ -84,8 +91,15 @@ public final class ChunkBodyCodec {
                 histogram.add(new ChunkData.BlockCount(blockId, count));
             }
         }
+        int[] surfaceBlocks = null;
+        if ((flags & ChunkData.FLAG_SURFACE_BLOCKS) != 0) {
+            surfaceBlocks = new int[n];
+            for (int i = 0; i < n; i++) {
+                surfaceBlocks[i] = r.u16();
+            }
+        }
         return new ChunkData(chunkX, chunkZ, sampleStep, sampleSize, minY, maxY,
-                heights, biomes, histogram);
+                heights, biomes, histogram, surfaceBlocks);
     }
 
     public static ChunkData decodeBody(byte[] body) {
@@ -105,6 +119,9 @@ public final class ChunkBodyCodec {
         }
         if (data.hasBlockHistogram()) {
             size += 1 + data.blockHistogram().size() * 6;
+        }
+        if (data.hasSurfaceBlocks()) {
+            size += data.cells() * 2;
         }
         return size;
     }
