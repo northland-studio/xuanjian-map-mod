@@ -122,7 +122,7 @@ class ChunkBatchCodecTest {
     @Test
     void blockHistogramRoundtripPerProductionContract() {
         // 生产契约：blockHist = u8 n + n*(u16 blockId, u32 count)
-        ChunkData base = sample(0, 0, true, false);
+        ChunkData base = sample(0, 0, 1, true, false);
         java.util.List<ChunkData.BlockCount> hist = java.util.List.of(
                 new ChunkData.BlockCount(1, 123456789L),
                 new ChunkData.BlockCount(65535, 7L));
@@ -167,7 +167,7 @@ class ChunkBatchCodecTest {
 
     @Test
     void compressionShrinksRealisticPayload() {
-        // 真实高度的区块高度矩阵近似平滑，deflate 应有明显收益
+        // 真实高度的区块高度矩阵近似平滑，zstd/deflate 都应有明显收益
         int n = 16;
         short[] heights = new short[n * n];
         for (int r = 0; r < n; r++) {
@@ -176,12 +176,16 @@ class ChunkBatchCodecTest {
             }
         }
         ChunkData data = new ChunkData(0, 0, 1, n, (short) 64, (short) 74,
-                heights, null, List.of(), null);
+                heights, null, List.of());
         byte[] raw = ChunkBatchCodec.encode(1, "minecraft:overworld", 1, List.of(data));
-        byte[] compressed = top.xuanjian.map.core.compress.DeflateCodec.INSTANCE.compress(raw);
-        assertTrue(compressed.length < raw.length,
-                "压缩后应更小: raw=" + raw.length + ", compressed=" + compressed.length);
-        assertArrayEquals(raw,
-                top.xuanjian.map.core.compress.DeflateCodec.INSTANCE.decompress(compressed));
+        for (top.xuanjian.map.core.compress.BlobCodec codec : List.of(
+                top.xuanjian.map.core.compress.ZstdCodec.INSTANCE,
+                top.xuanjian.map.core.compress.DeflateCodec.INSTANCE)) {
+            byte[] compressed = codec.compress(raw);
+            assertTrue(compressed.length < raw.length,
+                    codec.contentEncoding() + " 压缩后应更小: raw=" + raw.length
+                            + ", compressed=" + compressed.length);
+            assertArrayEquals(raw, codec.decompress(compressed));
+        }
     }
 }
