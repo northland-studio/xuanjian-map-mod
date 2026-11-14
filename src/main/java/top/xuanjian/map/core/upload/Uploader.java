@@ -114,7 +114,9 @@ public final class Uploader {
         }
 
         int planned = 0;
-        if (uploadedJobs == 0 && store.jobsByState(GisStore.JobState.PENDING, 1).isEmpty()) {
+        GisStore.JobStats jobStats = store.jobStats();
+        boolean hasActiveJobs = jobStats.pending() > 0 || jobStats.inFlight() > 0 || jobStats.retry() > 0;
+        if (uploadedJobs == 0 && !hasActiveJobs) {
             planned = buildJobs(session);
         }
         return new TickResult(planned, uploadedJobs, uploadedChunks, failed, retried, lastError);
@@ -140,6 +142,24 @@ public final class Uploader {
     public int buildJobs(WorldSession session) {
         List<GisStore.PendingChunk> pending =
                 store.pendingChunks(session.worldId(), session.dimension(), limits.maxPlanChunks());
+        if (pending.isEmpty()) {
+            return 0;
+        }
+        // 已在队列/重试中的 chunk 不得重复建任务（否则同一 chunk 会被多次上传）
+        Set<Long> covered = new HashSet<>();
+        for (GisStore.JobState active : new GisStore.JobState[]{
+                GisStore.JobState.PENDING, GisStore.JobState.IN_FLIGHT, GisStore.JobState.RETRY}) {
+            for (GisStore.JobRow job : store.jobsByState(active, 512)) {
+                for (ChunkKey key : decodeKeys(job.worldId(), job.dimension(), job.chunkKeys())) {
+                    covered.add(coordKey(key.chunkX(), key.chunkZ()));
+                }
+            }
+        }
+        if (!covered.isEmpty()) {
+            pending = pending.stream()
+                    .filter(c -> !covered.contains(coordKey(c.key().chunkX(), c.key().chunkZ())))
+                    .toList();
+        }
         if (pending.isEmpty()) {
             return 0;
         }

@@ -41,6 +41,8 @@ public class GisConfig {
 
     private String apiBase = DEFAULT_API_BASE;
     private String serverKey = DEFAULT_SERVER_KEY;
+    /** 可选：服务端令牌（契约 X-GIS-Server-Token），客户端一般留空，由 OAuth 鉴权。 */
+    private String serverToken = "";
     private String oauthClientId = "xuanjian-map-mod";
     private String oauthRedirectUri = DEFAULT_API_BASE + "/api/oauth/mod-callback";
 
@@ -53,6 +55,8 @@ public class GisConfig {
     private int uploadRatePerMinute = DEFAULT_UPLOAD_RATE_PER_MINUTE;
     private int uploadBatchChunks = DEFAULT_UPLOAD_BATCH_CHUNKS;
     private int uploadMaxAttempts = 8;
+    /** 上传压缩编码：契约允许 zstd/gzip/deflate/identity，默认 zstd（纯 Java 实现）。 */
+    private String contentEncoding = "zstd";
 
     private boolean hudEnabled = true;
     private boolean hudExpanded = true;
@@ -63,8 +67,8 @@ public class GisConfig {
     private boolean layerMarkers = true;
     private boolean layerOthers = true;
 
-    /** blockHist 上传：等契约明确 blockHist 字节布局后打开（默认关闭，见 docs/api-contract.md）。 */
-    private boolean uploadBlockHistogram = false;
+    /** blockHist 上传：生产契约已定义布局 u8 n + n*(u16 blockId,u32 count)，默认开启。 */
+    private boolean uploadBlockHistogram = true;
     private boolean debug = false;
 
     public GisConfig(Path configDir) {
@@ -98,6 +102,7 @@ public class GisConfig {
         }
         apiBase = str("api.base", DEFAULT_API_BASE);
         serverKey = str("gis.serverKey", DEFAULT_SERVER_KEY);
+        serverToken = str("gis.serverToken", "");
         oauthClientId = str("oauth.clientId", "xuanjian-map-mod");
         oauthRedirectUri = str("oauth.redirectUri", apiBase + "/api/oauth/mod-callback");
 
@@ -110,6 +115,7 @@ public class GisConfig {
         uploadRatePerMinute = clampInt(intOf("upload.ratePerMinute", DEFAULT_UPLOAD_RATE_PER_MINUTE), 1, 600);
         uploadBatchChunks = clampInt(intOf("upload.batchChunks", DEFAULT_UPLOAD_BATCH_CHUNKS), 1, 64);
         uploadMaxAttempts = clampInt(intOf("upload.maxAttempts", 8), 1, 30);
+        contentEncoding = normalizeEncoding(str("upload.contentEncoding", "zstd"));
 
         hudEnabled = bool("hud.enabled", true);
         hudExpanded = bool("hud.expanded", true);
@@ -120,13 +126,14 @@ public class GisConfig {
         layerMarkers = bool("layer.markers", true);
         layerOthers = bool("layer.others", true);
 
-        uploadBlockHistogram = bool("upload.blockHistogram", false);
+        uploadBlockHistogram = bool("upload.blockHistogram", true);
         debug = bool("debug", false);
     }
 
     public void save() {
         raw.setProperty("api.base", apiBase);
         raw.setProperty("gis.serverKey", serverKey);
+        raw.setProperty("gis.serverToken", serverToken);
         raw.setProperty("oauth.clientId", oauthClientId);
         raw.setProperty("oauth.redirectUri", oauthRedirectUri);
         raw.setProperty("capture.enabled", String.valueOf(captureEnabled));
@@ -137,6 +144,7 @@ public class GisConfig {
         raw.setProperty("upload.ratePerMinute", String.valueOf(uploadRatePerMinute));
         raw.setProperty("upload.batchChunks", String.valueOf(uploadBatchChunks));
         raw.setProperty("upload.maxAttempts", String.valueOf(uploadMaxAttempts));
+        raw.setProperty("upload.contentEncoding", contentEncoding);
         raw.setProperty("hud.enabled", String.valueOf(hudEnabled));
         raw.setProperty("hud.expanded", String.valueOf(hudExpanded));
         raw.setProperty("hud.throttleMs", String.valueOf(hudThrottleMs));
@@ -160,6 +168,7 @@ public class GisConfig {
     public void resetDefaults() {
         apiBase = DEFAULT_API_BASE;
         serverKey = DEFAULT_SERVER_KEY;
+        serverToken = "";
         oauthClientId = "xuanjian-map-mod";
         oauthRedirectUri = DEFAULT_API_BASE + "/api/oauth/mod-callback";
         captureEnabled = true;
@@ -170,6 +179,7 @@ public class GisConfig {
         uploadRatePerMinute = DEFAULT_UPLOAD_RATE_PER_MINUTE;
         uploadBatchChunks = DEFAULT_UPLOAD_BATCH_CHUNKS;
         uploadMaxAttempts = 8;
+        contentEncoding = "zstd";
         hudEnabled = true;
         hudExpanded = true;
         hudThrottleMs = DEFAULT_HUD_THROTTLE_MS;
@@ -177,7 +187,7 @@ public class GisConfig {
         layerRoads = true;
         layerMarkers = true;
         layerOthers = true;
-        uploadBlockHistogram = false;
+        uploadBlockHistogram = true;
         debug = false;
     }
 
@@ -225,6 +235,14 @@ public class GisConfig {
 
     public void serverKey(String value) {
         this.serverKey = value == null ? "" : value.trim();
+    }
+
+    public String serverToken() {
+        return serverToken;
+    }
+
+    public void serverToken(String value) {
+        this.serverToken = value == null ? "" : value.trim();
     }
 
     public String oauthClientId() {
@@ -297,6 +315,23 @@ public class GisConfig {
 
     public void uploadBatchChunks(int value) {
         this.uploadBatchChunks = clampInt(value, 1, 64);
+    }
+
+    /** 校验并归一压缩编码（契约只允许四种）。 */
+    public static String normalizeEncoding(String value) {
+        String v = value == null ? "" : value.trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (v) {
+            case "zstd", "gzip", "deflate", "identity" -> v;
+            default -> "zstd";
+        };
+    }
+
+    public String contentEncoding() {
+        return contentEncoding;
+    }
+
+    public void contentEncoding(String value) {
+        this.contentEncoding = normalizeEncoding(value);
     }
 
     public int uploadMaxAttempts() {

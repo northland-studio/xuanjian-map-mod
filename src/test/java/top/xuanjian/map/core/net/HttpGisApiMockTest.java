@@ -62,12 +62,14 @@ class HttpGisApiMockTest {
             json(ex, 200, """
                     {"contract":1,"server":{"key":"%s","name":"玄剑生产服"},
                      "worlds":[
-                       {"id":1,"worldKey":"xuanjian-main","status":"ACTIVE","isCurrent":true,
-                        "mcVersion":"26.2","dimensions":["minecraft:overworld","minecraft:the_nether"]},
+                       {"id":1,"worldKey":"yl-main","status":"ACTIVE","isCurrent":true,
+                        "mcVersion":"","dimensions":[
+                          {"dimension":"overworld","chunkCount":0,"bbox":null},
+                          {"dimension":"nether","chunkCount":0,"bbox":null}]},
                        {"id":2,"worldKey":"xuanjian-s2","status":"ARCHIVED","isCurrent":false,
-                        "mcVersion":"1.21.11","dimensions":["minecraft:overworld"]}],
-                     "limits":{"maxPlanChunks":4096,"maxBatchChunks":64,"maxCompressedBytes":4194304,
-                               "maxRawBytes":8388608,"maxSampleSize":32,"requestsPerMinute":60},
+                        "mcVersion":"1.21.11","dimensions":[{"dimension":"overworld"}]}],
+                     "limits":{"planChunksMax":4096,"maxChunkBatch":64,"maxCompressedBytes":4194304,
+                               "maxDecompressedBytes":8388608,"maxSampleSize":32,"uploadRatePerMinute":60},
                      "sync":{"intervalSeconds":45}}
                     """.formatted(serverKey));
         });
@@ -93,7 +95,7 @@ class HttpGisApiMockTest {
             lastIdempotencyKey = ex.getRequestHeaders().getFirst("Idempotency-Key");
             lastContentEncoding = ex.getRequestHeaders().getFirst("Content-Encoding");
             lastContractHeader = ex.getRequestHeaders().getFirst("X-GIS-Contract");
-            lastQuery = ex.getRequestURI().getQuery();
+            lastQuery = ex.getRequestURI().getRawQuery();
             if (rateLimitNext) {
                 ex.getResponseHeaders().add("Retry-After", "3");
                 json(ex, 429, "{\"ok\":false,\"error\":\"rate_limited\",\"message\":\"too many requests\"}");
@@ -108,8 +110,8 @@ class HttpGisApiMockTest {
                 return;
             }
             byte[] compressed = ex.getRequestBody().readAllBytes();
-            byte[] raw = "deflate".equals(lastContentEncoding)
-                    ? DeflateCodec.INSTANCE.decompress(compressed) : compressed;
+            byte[] raw = top.xuanjian.map.core.compress.BlobCodecs.byEncoding(lastContentEncoding)
+                    .decompress(compressed);
             lastUploadBody = ChunkBatchCodec.decode(raw);
             boolean duplicate = !seenIdempotencyKeys.add(lastIdempotencyKey);
             json(ex, 200, "{\"ok\":true,\"duplicate\":" + duplicate
@@ -135,7 +137,7 @@ class HttpGisApiMockTest {
         });
         server.createContext("/api/gis/objects", ex -> {
             record(ex);
-            lastQuery = ex.getRequestURI().getQuery();
+            lastQuery = ex.getRequestURI().getRawQuery();
             json(ex, 200, """
                     {"objects":[
                       {"type":"marker","id":"m9","name":"测试点","revision":1,
@@ -213,12 +215,12 @@ class HttpGisApiMockTest {
         assertEquals("yl", info.serverKey());
         assertEquals("玄剑生产服", info.serverName());
         assertEquals(2, info.worlds().size());
-        assertEquals("xuanjian-main", info.currentWorld().worldKey());
+        assertEquals("yl-main", info.currentWorld().worldKey());
         assertEquals(4096, info.limits().maxPlanChunks());
         assertEquals(64, info.limits().maxBatchChunks());
         assertEquals(45, info.syncIntervalSeconds());
         assertEquals("Bearer test-token", lastAuthHeader);
-        assertTrue(requestLog.get(0).contains("/api/gis/client/bootstrap"));
+        assertTrue(requestLog.stream().anyMatch(s -> s.contains("/api/gis/client/bootstrap")));
     }
 
     @Test
@@ -247,8 +249,8 @@ class HttpGisApiMockTest {
     void uploadChunks_binaryContractAndIdempotency(@TempDir Path dir) throws Exception {
         resetFlags();
         HttpGisApi api = api(dir);
-        ChunkData a = TestChunks.sample(1, 0, true, true);
-        ChunkData b = TestChunks.sample(2, 0, false, false);
+        ChunkData a = TestChunks.sampleWithHist(1, 0);
+        ChunkData b = TestChunks.sample(2, 0, true, true);
         byte[] raw = ChunkBatchCodec.encode(1, "minecraft:overworld", 7, List.of(a, b));
         byte[] compressed = DeflateCodec.INSTANCE.compress(raw);
         String idem = "xj0123456789abcdef0123456789abcd";
@@ -265,7 +267,11 @@ class HttpGisApiMockTest {
         assertNotNull(lastUploadBody);
         assertEquals(2, lastUploadBody.chunks().size());
         assertEquals(7, lastUploadBody.batchSeq());
-        assertEquals(ChunkData.NO_DATA, lastUploadBody.chunks().get(0).heights()[0],
+        assertEquals(3, lastUploadBody.chunks().get(0).blockHistogram().size(),
+                "服务端应能按生产契约解出 blockHist");
+        assertEquals(1, lastUploadBody.chunks().get(0).blockHistogram().get(0).blockId());
+        assertEquals(120L, lastUploadBody.chunks().get(0).blockHistogram().get(0).count());
+        assertEquals(ChunkData.NO_DATA, lastUploadBody.chunks().get(1).heights()[0],
                 "服务端解出的 -32768 缺口必须保留");
 
         GisApi.UploadResult replay = api.uploadChunks(1, "minecraft:overworld", idem,
@@ -278,7 +284,7 @@ class HttpGisApiMockTest {
         resetFlags();
         HttpGisApi api = api(dir);
         byte[] payload = DeflateCodec.INSTANCE.compress(ChunkBatchCodec.encode(1,
-                "minecraft:overworld", 1, List.of(TestChunks.sample(0, 0, false, false))));
+                "minecraft:overworld", 1, List.of(TestChunks.sample(0, 0, true, true))));
 
         rateLimitNext = true;
         ApiException rate = assertThrows(ApiException.class,

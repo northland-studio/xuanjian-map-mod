@@ -45,6 +45,10 @@ dependencies {
 	implementation "org.xerial:sqlite-jdbc:${project.sqlite_version}"
 	include "org.xerial:sqlite-jdbc:${project.sqlite_version}"
 
+	// 上传压缩：纯 Java zstd（契约推荐 Content-Encoding: zstd，不引入 native 依赖）
+	implementation "io.airlift:aircompressor:${project.aircompressor_version}"
+	include "io.airlift:aircompressor:${project.aircompressor_version}"
+
 	// 单元测试（纯 Java 核心在 main，测试不依赖 Minecraft 运行时）
 	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
 	testImplementation "org.junit.jupiter:junit-jupiter"

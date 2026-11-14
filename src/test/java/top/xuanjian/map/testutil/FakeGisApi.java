@@ -76,7 +76,8 @@ public class FakeGisApi implements GisApi {
         if (!uploadErrors.isEmpty()) {
             throw uploadErrors.remove(0);
         }
-        byte[] raw = top.xuanjian.map.core.compress.DeflateCodec.INSTANCE.decompress(payload);
+        byte[] raw = top.xuanjian.map.core.compress.BlobCodecs.byEncoding(contentEncoding)
+                .decompress(payload);
         DecodedBatch batch = ChunkBatchCodec.decode(raw);
         uploadedBatches.add(batch);
         for (var chunk : batch.chunks()) {

@@ -5,7 +5,7 @@ import net.minecraft.client.Minecraft;
 import top.xuanjian.map.client.capture.ChunkCaptureService;
 import top.xuanjian.map.client.compat.McReflect;
 import top.xuanjian.map.client.compat.XaeroCompat;
-import top.xuanjian.map.core.compress.DeflateCodec;
+import top.xuanjian.map.core.compress.BlobCodecs;
 import top.xuanjian.map.core.config.GisConfig;
 import top.xuanjian.map.core.dimension.Dimensions;
 import top.xuanjian.map.core.geo.GisLocator;
@@ -99,8 +99,9 @@ public final class GisClient {
         this.api = new HttpGisApi(config, tokenStore);
         this.oauth = new PkceOAuth(config, tokenStore);
         this.store = new SynchronizedStore(StoreFactory.open(dataDir));
+        BlobCodecs.verifyAtStartup();
         this.uploader = new Uploader(store, api, config, Limits.DEFAULT, TimeSource.SYSTEM,
-                DeflateCodec.INSTANCE);
+                BlobCodecs.forUpload(config));
         this.capture = new ChunkCaptureService(this);
         GisLog.info(TAG, "GIS 客户端初始化完成：backend=" + store.backend()
                 + ", api=" + config.apiBase() + ", serverKey=" + config.serverKey());

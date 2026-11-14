@@ -58,10 +58,13 @@ public final class HudText {
         if (after == null) {
             return null;
         }
-        boolean districtChanged = before == null
-                || !eq(before.districtId(), after.districtId());
-        boolean roadChanged = before == null
-                || !eq(before.roadId(), after.roadId());
+        if (before == null) {
+            return after.hasRoad()
+                    ? "进入 " + after.districtLabel() + " · " + after.roadLabel()
+                    : "进入 " + after.districtLabel();
+        }
+        boolean districtChanged = !eq(before.districtId(), after.districtId());
+        boolean roadChanged = !eq(before.roadId(), after.roadId());
         if (!districtChanged && !roadChanged) {
             return null;
         }

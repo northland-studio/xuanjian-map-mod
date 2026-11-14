@@ -9,14 +9,22 @@ public record Limits(
         long maxCompressedBytes,
         long maxRawBytes,
         int maxSampleSize,
-        int requestsPerMinute) {
+        int requestsPerMinute,
+        int maxObjectsPerPage) {
 
     public static final Limits DEFAULT = new Limits(
             4096, 64,
             4L * 1024 * 1024,
             8L * 1024 * 1024,
             32,
-            60);
+            60,
+            1000);
+
+    public Limits(int maxPlanChunks, int maxBatchChunks, long maxCompressedBytes,
+                  long maxRawBytes, int maxSampleSize, int requestsPerMinute) {
+        this(maxPlanChunks, maxBatchChunks, maxCompressedBytes, maxRawBytes, maxSampleSize,
+                requestsPerMinute, 1000);
+    }
 
     public Limits {
         if (maxPlanChunks <= 0) {
@@ -36,6 +44,9 @@ public record Limits(
         }
         if (requestsPerMinute <= 0) {
             requestsPerMinute = DEFAULT.requestsPerMinute;
+        }
+        if (maxObjectsPerPage <= 0) {
+            maxObjectsPerPage = DEFAULT.maxObjectsPerPage;
         }
     }
 }

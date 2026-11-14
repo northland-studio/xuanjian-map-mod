@@ -6,37 +6,44 @@ import java.util.List;
 /**
  * 单区块采集样本（契约二进制里一个 chunk 段的内容）。
  *
- * <p>严格按契约：
+ * <p>严格按 <b>生产契约</b>（{@code GET /api/gis/client/contract}）：
  * <ul>
+ *   <li>{@code sampleStep 1..4}，{@code sampleSize = 16 / sampleStep}；</li>
  *   <li>{@code heightMatrix i16[n*n]}，<b>-32768 表示无数据，必须保留缺口</b>，不得填 0；</li>
  *   <li>{@code biomeMatrix u16[n*n]} 可选，0xFFFF 表示未知；</li>
- *   <li>blockHist 可选（契约未定义布局，默认不上传，见 docs/api-contract.md 待确认项）。</li>
+ *   <li>{@code blockHist} 可选：{@code u8 n} + {@code n*(u16 blockId, u32 count)}（方块类型直方图）。</li>
  * </ul>
  *
- * @param chunkX      区块 X
- * @param chunkZ      区块 Z
- * @param sampleStep  采样步长（1..32，且 sampleSize*step 必须 = 16）
- * @param minY        有效高度最小值（含）
- * @param maxY        有效高度最大值（含）
- * @param heights     高度矩阵，行优先：index = row * sampleSize + col
- * @param biomes      biome 注册表数字 ID 矩阵，-1 表示未知
- * @param blockPalette block id 调色板（本地采集/可选上传）
- * @param blockIndices 每列的调色板下标（-1 未知），长度 n*n
+ * @param chunkX        区块 X
+ * @param chunkZ        区块 Z
+ * @param sampleStep    采样步长（1..4）
+ * @param sampleSize    每边采样点数（= 16 / sampleStep）
+ * @param minY          有效高度最小值（含）
+ * @param maxY          有效高度最大值（含）
+ * @param heights       高度矩阵，行优先：index = row * sampleSize + col
+ * @param biomes        biome 注册表数字 ID 矩阵，-1 表示未知
+ * @param blockHistogram 方块类型直方图（按契约 blockId/count），null 表示不上传
  */
 public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
                         short minY, short maxY, short[] heights, int[] biomes,
-                        List<String> blockPalette, short[] blockIndices) {
+                        List<BlockCount> blockHistogram) {
 
     public static final short NO_DATA = -32768;
     public static final int UNKNOWN_BIOME = 0xFFFF;
+    public static final int MAX_SAMPLE_STEP = 4;
+    public static final int MAX_BLOCK_HIST_ENTRIES = 255;
 
     public static final int FLAG_HEIGHTS = 0x01;
     public static final int FLAG_BIOMES = 0x02;
     public static final int FLAG_BLOCK_HIST = 0x04;
 
+    /** blockHist 条目：方块注册表数字 ID 与出现次数。 */
+    public record BlockCount(int blockId, long count) {
+    }
+
     public ChunkData {
-        if (sampleStep < 1 || sampleStep > 32) {
-            throw new IllegalArgumentException("sampleStep 越界: " + sampleStep);
+        if (sampleStep < 1 || sampleStep > MAX_SAMPLE_STEP) {
+            throw new IllegalArgumentException("sampleStep 必须为 1.." + MAX_SAMPLE_STEP + ": " + sampleStep);
         }
         if (sampleSize < 1 || sampleSize > 32) {
             throw new IllegalArgumentException("sampleSize 越界: " + sampleSize);
@@ -52,13 +59,11 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
         if (biomes != null && biomes.length != expected) {
             throw new IllegalArgumentException("biomes 长度必须为 " + expected);
         }
-        if (blockIndices != null && blockIndices.length != expected) {
-            throw new IllegalArgumentException("blockIndices 长度必须为 " + expected);
-        }
-        if (blockPalette == null) {
-            blockPalette = List.of();
+        if (blockHistogram == null) {
+            blockHistogram = List.of();
         } else {
-            blockPalette = List.copyOf(blockPalette);
+            blockHistogram = List.copyOf(blockHistogram.subList(0,
+                    Math.min(blockHistogram.size(), MAX_BLOCK_HIST_ENTRIES)));
         }
     }
 
@@ -70,8 +75,8 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
         return biomes != null;
     }
 
-    public boolean hasBlockIndices() {
-        return blockIndices != null && !blockPalette.isEmpty();
+    public boolean hasBlockHistogram() {
+        return !blockHistogram.isEmpty();
     }
 
     /** 由实际含数据的矩阵重算 minY/maxY（全缺口时 0/0）。 */
@@ -106,7 +111,7 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
         if (biomes != null) {
             flags |= FLAG_BIOMES;
         }
-        if (hasBlockIndices()) {
+        if (hasBlockHistogram()) {
             flags |= FLAG_BLOCK_HIST;
         }
         return flags;
@@ -125,8 +130,7 @@ public record ChunkData(int chunkX, int chunkZ, int sampleStep, int sampleSize,
                 && minY == other.minY && maxY == other.maxY
                 && Arrays.equals(heights, other.heights)
                 && Arrays.equals(biomes, other.biomes)
-                && blockPalette.equals(other.blockPalette)
-                && Arrays.equals(blockIndices, other.blockIndices);
+                && blockHistogram.equals(other.blockHistogram);
     }
 
     @Override

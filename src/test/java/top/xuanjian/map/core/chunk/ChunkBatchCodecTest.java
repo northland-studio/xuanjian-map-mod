@@ -30,7 +30,7 @@ class ChunkBatchCodecTest {
         }
         short[] minMax = ChunkData.computeMinMax(heights);
         return new ChunkData(chunkX, chunkZ, step, n, minMax[0], minMax[1], heights, biomes,
-                List.of(), null);
+                java.util.List.of());
     }
 
     @Test
@@ -120,12 +120,49 @@ class ChunkBatchCodecTest {
     }
 
     @Test
+    void blockHistogramRoundtripPerProductionContract() {
+        // 生产契约：blockHist = u8 n + n*(u16 blockId, u32 count)
+        ChunkData base = sample(0, 0, true, false);
+        java.util.List<ChunkData.BlockCount> hist = java.util.List.of(
+                new ChunkData.BlockCount(1, 123456789L),
+                new ChunkData.BlockCount(65535, 7L));
+        ChunkData withHist = new ChunkData(base.chunkX(), base.chunkZ(), base.sampleStep(),
+                base.sampleSize(), base.minY(), base.maxY(), base.heights(), base.biomes(), hist);
+        byte[] payload = ChunkBatchCodec.encode(3, "minecraft:overworld", 9, List.of(withHist));
+        ChunkData decoded = ChunkBatchCodec.decode(payload).chunks().get(0);
+        assertEquals(2, decoded.blockHistogram().size());
+        assertEquals(1, decoded.blockHistogram().get(0).blockId());
+        assertEquals(123456789L, decoded.blockHistogram().get(0).count());
+        assertEquals(65535, decoded.blockHistogram().get(1).blockId());
+        assertTrue(decoded.hasBlockHistogram());
+        assertEquals(ChunkData.FLAG_BLOCK_HIST, decoded.flags() & ChunkData.FLAG_BLOCK_HIST);
+    }
+
+    @Test
+    void dimensionCodesMatchProductionContract() {
+        // overworld=0 / the_nether=1 / the_end=2 / custom=3
+        assertEquals(0, top.xuanjian.map.core.dimension.Dimensions.code("minecraft:overworld"));
+        assertEquals(1, top.xuanjian.map.core.dimension.Dimensions.code("the_nether"));
+        assertEquals(2, top.xuanjian.map.core.dimension.Dimensions.code("the_end"));
+        assertEquals(3, top.xuanjian.map.core.dimension.Dimensions.code("minecraft:custom_void"));
+    }
+
+    @Test
+    void sampleStepBoundsFollowContract() {
+        // 契约 sampleStep 1..4
+        assertThrows(IllegalArgumentException.class,
+                () -> new ChunkData(0, 0, 8, 2, (short) 0, (short) 0, new short[4], null, List.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ChunkData(0, 0, 0, 16, (short) 0, (short) 0, new short[256], null, List.of()));
+    }
+
+    @Test
     void chunkDataValidation() {
         short[] heights = new short[16 * 16];
         assertThrows(IllegalArgumentException.class,
-                () -> new ChunkData(0, 0, 3, 5, (short) 0, (short) 0, heights, null, List.of(), null));
+                () -> new ChunkData(0, 0, 3, 5, (short) 0, (short) 0, heights, null, List.of()));
         assertThrows(IllegalArgumentException.class,
-                () -> new ChunkData(0, 0, 1, 16, (short) 0, (short) 0, new short[1], null, List.of(), null));
+                () -> new ChunkData(0, 0, 1, 16, (short) 0, (short) 0, new short[1], null, List.of()));
     }
 
     @Test

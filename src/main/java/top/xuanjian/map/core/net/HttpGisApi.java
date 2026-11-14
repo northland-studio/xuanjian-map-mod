@@ -78,6 +78,12 @@ public final class HttpGisApi implements GisApi {
             for (JsonElement d : Json.optArray(w, "dimensions")) {
                 if (d.isJsonPrimitive()) {
                     dims.add(Dimensions.normalize(d.getAsString()));
+                } else if (d.isJsonObject()) {
+                    // 生产契约：dimensions[] 是对象 {dimension, chunkCount, bbox, updatedAt}
+                    String value = Json.optString(d.getAsJsonObject(), "dimension", "");
+                    if (!value.isBlank()) {
+                        dims.add(Dimensions.normalize(value));
+                    }
                 }
             }
             worlds.add(new RegisteredWorld(
@@ -92,13 +98,19 @@ public final class HttpGisApi implements GisApi {
         JsonObject limitsJson = Json.optObject(json, "limits");
         Limits limits = Limits.DEFAULT;
         if (limitsJson != null) {
+            // 同时兼容 Lead 转述的命名（maxPlanChunks/maxBatchChunks/maxRawBytes）
+            // 与生产 /api/gis/client/contract 的命名（planChunksMax/maxChunkBatch/maxDecompressedBytes）
             limits = new Limits(
-                    Json.optInt(limitsJson, "maxPlanChunks", Limits.DEFAULT.maxPlanChunks()),
-                    Json.optInt(limitsJson, "maxBatchChunks", Limits.DEFAULT.maxBatchChunks()),
+                    Json.optInt(limitsJson, "maxPlanChunks",
+                            Json.optInt(limitsJson, "planChunksMax", Limits.DEFAULT.maxPlanChunks())),
+                    Json.optInt(limitsJson, "maxBatchChunks",
+                            Json.optInt(limitsJson, "maxChunkBatch", Limits.DEFAULT.maxBatchChunks())),
                     Json.optLong(limitsJson, "maxCompressedBytes", Limits.DEFAULT.maxCompressedBytes()),
-                    Json.optLong(limitsJson, "maxRawBytes", Limits.DEFAULT.maxRawBytes()),
+                    Json.optLong(limitsJson, "maxRawBytes",
+                            Json.optLong(limitsJson, "maxDecompressedBytes", Limits.DEFAULT.maxRawBytes())),
                     Json.optInt(limitsJson, "maxSampleSize", Limits.DEFAULT.maxSampleSize()),
-                    Json.optInt(limitsJson, "requestsPerMinute", Limits.DEFAULT.requestsPerMinute()));
+                    Json.optInt(limitsJson, "requestsPerMinute",
+                            Json.optInt(limitsJson, "uploadRatePerMinute", Limits.DEFAULT.requestsPerMinute())));
         }
         JsonObject sync = Json.optObject(json, "sync");
         int syncInterval = sync != null
@@ -206,11 +218,19 @@ public final class HttpGisApi implements GisApi {
     public List<GisObject> objects(long worldId, String dimension, BBox bbox,
                                    List<GisObjectKind> types, int limit, String cursor)
             throws ApiException {
+        if (bbox == null) {
+            throw new ApiException("bbox_required", "objects 查询必须带 bbox", 400);
+        }
+        if (bbox.area() > 16_000_000) {
+            throw new ApiException("bbox_too_large",
+                    "bbox 面积超限: " + (long) bbox.area() + " > 16000000", 400);
+        }
+        int maxPerPage = Math.min(limit, Limits.DEFAULT.maxObjectsPerPage());
         StringBuilder path = new StringBuilder("/api/gis/objects")
                 .append("?worldId=").append(worldId)
                 .append("&dimension=").append(enc(Dimensions.normalize(dimension)))
                 .append("&bbox=").append(enc(bbox.toString()))
-                .append("&limit=").append(Math.max(1, Math.min(limit, 200)));
+                .append("&limit=").append(Math.max(1, Math.min(maxPerPage, 1000)));
         if (types != null && !types.isEmpty()) {
             StringBuilder t = new StringBuilder();
             for (GisObjectKind k : types) {
@@ -311,6 +331,9 @@ public final class HttpGisApi implements GisApi {
         OAuthTokens tokens = tokenStore.tokens();
         if (tokens.hasAccessToken()) {
             b.header("Authorization", "Bearer " + tokens.accessToken());
+        }
+        if (config.serverToken() != null && !config.serverToken().isBlank()) {
+            b.header("X-GIS-Server-Token", config.serverToken());
         }
     }
 

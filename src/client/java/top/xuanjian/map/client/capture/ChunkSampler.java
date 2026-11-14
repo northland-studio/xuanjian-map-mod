@@ -7,8 +7,7 @@ import top.xuanjian.map.core.chunk.ChunkData;
 import top.xuanjian.map.core.net.Json;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.IdentityHashMap;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,10 +15,11 @@ import java.util.Map;
 /**
  * Minecraft 区块采样器（跨版本反射实现，26.2 / 1.21.11 共用）。
  *
- * <p>只采集 Minecraft <b>原生</b>数据：高度矩阵、biome、表面方块类型、结构、block entity 类型。
+ * <p>只采集 Minecraft <b>原生</b>数据：高度矩阵、biome、表面方块直方图、结构、block entity 类型。
  * 规范明确禁止自动推断玩家建筑/道路/城区/商店 —— 本类不做任何推断。
  *
  * <p>缺数据（未加载/接口不可用）一律写 {@link ChunkData#NO_DATA}，绝不填 0。
+ * 契约约束：sampleStep 1..4，sampleSize = 16/sampleStep。
  */
 public final class ChunkSampler {
 
@@ -40,6 +40,7 @@ public final class ChunkSampler {
 
     private static final int MAX_STRUCTURES = 32;
     private static final int MAX_BLOCK_ENTITIES = 64;
+    private static final int BLOCK_HIST_TOP_N = 32;
 
     private static final Object LOCK = new Object();
     private static boolean resolved;
@@ -54,15 +55,15 @@ public final class ChunkSampler {
     private ChunkSampler() {
     }
 
-    /** sampleStep 必须是能整除 16 的值（1/2/4/8/16）。 */
+    /** 契约：sampleStep 1..4 且必须整除 16。 */
     public static int normalizeStep(int step) {
         if (step <= 1) {
             return 1;
         }
-        if (step >= 16) {
-            return 16;
+        if (step >= 4) {
+            return 4;
         }
-        return step <= 2 ? 2 : step <= 4 ? 4 : 8;
+        return step <= 2 ? 2 : 4;
     }
 
     public static Result sample(Object level, int chunkX, int chunkZ, int sampleStep,
@@ -84,13 +85,14 @@ public final class ChunkSampler {
         int[] biomes = new int[n * n];
         java.util.Arrays.fill(heights, ChunkData.NO_DATA);
         java.util.Arrays.fill(biomes, -1);
-        String[] surfaceBlocks = new String[n * n];
         boolean anyHeight = false;
         boolean anyBiome = false;
 
-        Class<?> blockPosClassLocal = blockPosClass;
-        Map<Object, String> blockIdCache = new IdentityHashMap<>();
-        Map<Object, Integer> biomeIdCache = new IdentityHashMap<>();
+        Map<Object, String> blockIdCache = new java.util.IdentityHashMap<>();
+        Map<Object, Integer> blockNumericCache = new java.util.IdentityHashMap<>();
+        Map<Object, Integer> biomeIdCache = new java.util.IdentityHashMap<>();
+        Map<Integer, String> blockNames = new LinkedHashMap<>();
+        Map<Integer, Long> histogram = new LinkedHashMap<>();
 
         for (int row = 0; row < n; row++) {
             for (int col = 0; col < n; col++) {
@@ -107,7 +109,7 @@ public final class ChunkSampler {
                 heights[idx] = (short) Math.max(Short.MIN_VALUE + 1, Math.min(Short.MAX_VALUE, height));
                 anyHeight = true;
 
-                Object pos = McReflect.construct(blockPosClassLocal, worldX, heights[idx] - 1, worldZ);
+                Object pos = McReflect.construct(blockPosClass, worldX, heights[idx] - 1, worldZ);
                 if (pos == null) {
                     warnings.add("BlockPos 构造失败");
                     continue;
@@ -117,12 +119,16 @@ public final class ChunkSampler {
                 if (biomeId instanceof Integer id) {
                     biomes[idx] = id;
                     anyBiome = true;
-                } else {
-                    biomes[idx] = -1;
                 }
 
-                String blockId = readBlockId(chunk, level, pos, blockIdCache);
-                surfaceBlocks[idx] = blockId;
+                Object block = readBlock(chunk, level, pos);
+                if (block != null) {
+                    Integer numeric = registryNumericId(blockRegistry, block, blockNumericCache);
+                    if (numeric != null) {
+                        histogram.merge(numeric, 1L, Long::sum);
+                        blockNames.putIfAbsent(numeric, registryId(blockRegistry, block, blockIdCache));
+                    }
+                }
             }
         }
 
@@ -131,47 +137,32 @@ public final class ChunkSampler {
         }
         int[] biomeMatrix = anyBiome ? biomes : null;
 
-        // 表面方块调色板（本地保存；契约 blockHist 布局待确认后才上传）
-        Map<String, Integer> paletteIndex = new LinkedHashMap<>();
-        short[] blockIndices = new short[n * n];
-        java.util.Arrays.fill(blockIndices, (short) -1);
-        for (int i = 0; i < surfaceBlocks.length; i++) {
-            String id = surfaceBlocks[i];
-            if (id == null) {
-                continue;
-            }
-            int pi = paletteIndex.computeIfAbsent(id, k -> paletteIndex.size());
-            if (pi > Short.MAX_VALUE) {
-                continue;
-            }
-            blockIndices[i] = (short) pi;
+        List<ChunkData.BlockCount> blockHist = null;
+        if (includeBlockHist && !histogram.isEmpty()) {
+            blockHist = new ArrayList<>();
+            histogram.entrySet().stream()
+                    .sorted(Comparator.<Map.Entry<Integer, Long>>comparingLong(Map.Entry::getValue).reversed()
+                            .thenComparingInt(Map.Entry::getKey))
+                    .limit(BLOCK_HIST_TOP_N)
+                    .forEach(e -> blockHist.add(new ChunkData.BlockCount(e.getKey(), e.getValue())));
         }
-        List<String> palette = new ArrayList<>(paletteIndex.keySet());
 
         short[] minMax = ChunkData.computeMinMax(heights);
-        ChunkData data;
-        if (includeBlockHist && !palette.isEmpty()) {
-            data = new ChunkData(chunkX, chunkZ, step, n, minMax[0], minMax[1],
-                    heights, biomeMatrix, palette, blockIndices);
-        } else {
-            data = new ChunkData(chunkX, chunkZ, step, n, minMax[0], minMax[1],
-                    heights, biomeMatrix, List.of(), null);
-        }
+        ChunkData data = new ChunkData(chunkX, chunkZ, step, n, minMax[0], minMax[1],
+                heights, biomeMatrix, blockHist);
 
         String structuresJson = readStructures(chunk, warnings);
         String blockEntitiesJson = readBlockEntities(chunk, warnings);
-        JsonObject paletteJson = new JsonObject();
-        JsonArray paletteArray = new JsonArray();
-        palette.forEach(paletteArray::add);
-        paletteJson.add("palette", paletteArray);
-        JsonArray indexArray = new JsonArray();
-        for (short v : blockIndices) {
-            indexArray.add(v);
-        }
-        paletteJson.add("indices", indexArray);
 
-        return new Result(new Capture(data, structuresJson, blockEntitiesJson,
-                Json.write(paletteJson), warnings), "");
+        JsonArray palette = new JsonArray();
+        blockNames.forEach((id, name) -> {
+            JsonObject entry = new JsonObject();
+            entry.addProperty("id", id);
+            entry.addProperty("name", name);
+            palette.add(entry);
+        });
+        return new Result(new Capture(data, structuresJson, blockEntitiesJson, Json.write(palette),
+                warnings), "");
     }
 
     /* ==================== 单项读取 ==================== */
@@ -189,7 +180,7 @@ public final class ChunkSampler {
     }
 
     private static Integer readHeight(Object chunk, Object level, int lx, int lz,
-                                      int worldX, int worldZ) {
+                                     int worldX, int worldZ) {
         Object value = null;
         if (worldSurface != null) {
             value = McReflect.call(chunk, new String[]{"getHeight"}, worldSurface, lx, lz);
@@ -197,13 +188,7 @@ public final class ChunkSampler {
                 value = McReflect.call(level, new String[]{"getHeight"}, worldSurface, worldX, worldZ);
             }
         }
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number num) {
-            return num.intValue();
-        }
-        return null;
+        return value instanceof Number num ? num.intValue() : null;
     }
 
     private static Object readBiomeId(Object level, Object pos, Map<Object, Integer> cache) {
@@ -231,50 +216,61 @@ public final class ChunkSampler {
         return id;
     }
 
-    private static String readBlockId(Object chunk, Object level, Object pos,
-                                      Map<Object, String> cache) {
+    private static Object readBlock(Object chunk, Object level, Object pos) {
         Object state = McReflect.call(chunk, new String[]{"getBlockState"}, pos);
         if (state == null) {
             state = McReflect.call(level, new String[]{"getBlockState"}, pos);
         }
-        if (state == null) {
-            return null;
-        }
-        Object block = McReflect.call(state, new String[]{"getBlock"});
-        if (block == null) {
+        return state == null ? null : McReflect.call(state, new String[]{"getBlock"});
+    }
+
+    private static Integer registryNumericId(Object registry, Object entry,
+                                             Map<Object, Integer> cache) {
+        if (registry == null || entry == null) {
             return null;
         }
         synchronized (LOCK) {
-            if (cache.containsKey(block)) {
-                return cache.get(block);
+            if (cache.containsKey(entry)) {
+                return cache.get(entry);
             }
         }
-        String id = registryId(blockRegistry, block);
+        Integer id = null;
+        Object raw = McReflect.call(registry, new String[]{"getId", "getIdOrThrow"}, entry);
+        if (raw instanceof Number num) {
+            id = num.intValue();
+        }
         synchronized (LOCK) {
-            cache.put(block, id);
+            cache.put(entry, id);
         }
         return id;
     }
 
-    private static String registryId(Object registry, Object entry) {
+    private static String registryId(Object registry, Object entry, Map<Object, String> cache) {
         if (registry == null || entry == null) {
             return null;
         }
-        Object key = McReflect.call(registry, new String[]{"getKey", "getResourceKey"}, entry);
-        String id = resourceKeyId(key);
-        if (id != null) {
-            return id;
-        }
-        Object holder = McReflect.call(entry, new String[]{"builtInRegistryHolder"});
-        if (holder != null) {
-            Object holderKey = McReflect.call(holder, new String[]{"key", "unwrapKey"});
-            id = resourceKeyId(holderKey);
-            if (id != null) {
-                return id;
+        synchronized (LOCK) {
+            if (cache.containsKey(entry)) {
+                return cache.get(entry);
             }
         }
-        String fallback = String.valueOf(entry);
-        return fallback.isBlank() || "null".equals(fallback) ? null : fallback;
+        String id = null;
+        Object key = McReflect.call(registry, new String[]{"getKey", "getResourceKey"}, entry);
+        id = resourceKeyId(key);
+        if (id == null) {
+            Object holder = McReflect.call(entry, new String[]{"builtInRegistryHolder"});
+            if (holder != null) {
+                id = resourceKeyId(McReflect.call(holder, new String[]{"key", "unwrapKey"}));
+            }
+        }
+        if (id == null) {
+            String fallback = String.valueOf(entry);
+            id = fallback.isBlank() || "null".equals(fallback) ? null : fallback;
+        }
+        synchronized (LOCK) {
+            cache.put(entry, id);
+        }
+        return id;
     }
 
     private static String resourceKeyId(Object keyLike) {
@@ -282,19 +278,13 @@ public final class ChunkSampler {
             return null;
         }
         if (keyLike instanceof java.util.Optional<?> optional) {
-            if (optional.isEmpty()) {
-                return null;
-            }
-            return resourceKeyId(optional.get());
+            return optional.isEmpty() ? null : resourceKeyId(optional.get());
         }
         Object location = McReflect.call(keyLike, new String[]{"location", "registry", "getPath"});
         if (location instanceof String s) {
             return s;
         }
-        if (location != null) {
-            return String.valueOf(location);
-        }
-        return null;
+        return location == null ? null : String.valueOf(location);
     }
 
     private static String readStructures(Object chunk, List<String> warnings) {
@@ -306,17 +296,18 @@ public final class ChunkSampler {
                 if (count++ >= MAX_STRUCTURES) {
                     break;
                 }
-                String structureId = registryId(structureRegistry, entry.getKey());
+                String structureId = registryId(structureRegistry, entry.getKey(),
+                        new java.util.IdentityHashMap<>());
                 if (structureId == null) {
                     continue;
                 }
                 Object bbox = McReflect.call(entry.getValue(), new String[]{"getBoundingBox"});
-                JsonObject o = new JsonObject();
-                o.addProperty("id", structureId);
                 int[] coords = readBoundingBox(bbox);
                 if (coords == null) {
                     continue;
                 }
+                JsonObject o = new JsonObject();
+                o.addProperty("id", structureId);
                 o.addProperty("minX", coords[0]);
                 o.addProperty("minY", coords[1]);
                 o.addProperty("minZ", coords[2]);
@@ -335,17 +326,13 @@ public final class ChunkSampler {
         if (bbox == null) {
             return null;
         }
-        String[] methods = {"minX", "minY", "minZ", "maxX", "maxY", "maxZ"};
-        String[] fields = {"minX", "minY", "minZ", "maxX", "maxY", "maxZ"};
+        String[] names = {"minX", "minY", "minZ", "maxX", "maxY", "maxZ"};
         int[] out = new int[6];
         for (int i = 0; i < 6; i++) {
-            Object value = McReflect.call(bbox, new String[]{methods[i]});
+            Object value = McReflect.call(bbox, new String[]{names[i],
+                    "get" + Character.toUpperCase(names[i].charAt(0)) + names[i].substring(1)});
             if (value == null) {
-                value = McReflect.call(bbox, new String[]{"get" + Character.toUpperCase(methods[i].charAt(0))
-                        + methods[i].substring(1)});
-            }
-            if (value == null) {
-                value = McReflect.field(bbox, fields[i]);
+                value = McReflect.field(bbox, names[i]);
             }
             if (!(value instanceof Number num)) {
                 return null;
@@ -360,6 +347,7 @@ public final class ChunkSampler {
         JsonArray array = new JsonArray();
         if (entities instanceof Map<?, ?> map) {
             int count = 0;
+            Map<Object, String> cache = new java.util.IdentityHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 if (count++ >= MAX_BLOCK_ENTITIES) {
                     break;
@@ -368,15 +356,15 @@ public final class ChunkSampler {
                 if (be == null) {
                     continue;
                 }
-                Object type = McReflect.call(be, new String[]{"getType"});
-                String typeId = registryId(blockEntityTypeRegistry, type);
-                JsonObject o = new JsonObject();
-                o.addProperty("type", typeId == null ? "unknown" : typeId);
+                String typeId = registryId(blockEntityTypeRegistry,
+                        McReflect.call(be, new String[]{"getType"}), cache);
                 Object pos = entry.getKey();
                 Object x = McReflect.call(pos, new String[]{"getX"});
                 Object y = McReflect.call(pos, new String[]{"getY"});
                 Object z = McReflect.call(pos, new String[]{"getZ"});
                 if (x instanceof Number nx && y instanceof Number ny && z instanceof Number nz) {
+                    JsonObject o = new JsonObject();
+                    o.addProperty("type", typeId == null ? "unknown" : typeId);
                     o.addProperty("x", nx.intValue());
                     o.addProperty("y", ny.intValue());
                     o.addProperty("z", nz.intValue());
