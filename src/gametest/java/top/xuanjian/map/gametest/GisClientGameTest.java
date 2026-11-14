@@ -62,6 +62,8 @@ public class GisClientGameTest implements FabricClientGameTest {
             gis.config().captureIntervalTicks(20);
             gis.config().captureRadiusChunks(1);
             gis.config().sampleStep(4);
+            // v2：CI 中开启 surfaceBlockMatrix 采集以便断言（本地模式不上传）
+            gis.config().captureSurfaceBlocks(true);
             gis.config().save();
             gis.rebind();
             LOGGER.info("[gametest] 配置完成：api={}, backend={}", gis.config().apiBase(),
@@ -173,6 +175,38 @@ public class GisClientGameTest implements FabricClientGameTest {
 
             if (captured <= 0) {
                 throw new AssertionError("测试世界内没有采集到任何区块（GIS 采集链路失败）");
+            }
+
+            // v2：断言本地缓存里至少一个区块带 surfaceBlockMatrix，且不是全 0xFFFF
+            Integer surfaceValid = context.computeOnClient(client -> {
+                GisClient gis = GisClient.get();
+                var s = gis.session();
+                int[] pos = top.xuanjian.map.client.hud.GisHudRenderer.playerPosition(client);
+                int cx = pos[0] >> 4;
+                int cz = pos[2] >> 4;
+                var key = new top.xuanjian.map.core.chunk.ChunkKey(s.worldId(), s.dimension(), cx, cz);
+                var row = gis.store().getChunk(key);
+                if (row == null) {
+                    LOGGER.info("[gametest] v2 断言：玩家所在区块尚未落库 ({},{})", cx, cz);
+                    return -1;
+                }
+                var data = top.xuanjian.map.core.chunk.ChunkBodyCodec.decodeBody(row.payload());
+                if (!data.hasSurfaceBlocks()) {
+                    LOGGER.info("[gametest] v2 断言：payload 不含 surfaceBlockMatrix（flags={}）", data.flags());
+                    return -2;
+                }
+                int valid = 0;
+                for (int hash : data.surfaceBlocks()) {
+                    if (hash != top.xuanjian.map.core.chunk.BlockHash.NO_SURFACE) {
+                        valid++;
+                    }
+                }
+                LOGGER.info("[gametest] v2 断言：surfaceBlockMatrix 有效列 {}/{}（flags={}）",
+                        valid, data.surfaceBlocks().length, data.flags());
+                return valid;
+            });
+            if (surfaceValid == null || surfaceValid <= 0) {
+                throw new AssertionError("v2 地表方块矩阵缺失或全为 0xFFFF: " + surfaceValid);
             }
             if (session == null || session.dimension() == null || session.dimension().isBlank()) {
                 throw new AssertionError("HUD 会话维度为空（世界识别失败）");

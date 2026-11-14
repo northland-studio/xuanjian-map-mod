@@ -104,6 +104,12 @@ public final class SynchronizedStore implements GisStore {
     }
 
     @Override
+    public List<int[]> chunksNeedingSurface(long worldId, String dimension, int limit) {
+        synchronized (lock) {
+            return delegate.chunksNeedingSurface(worldId, dimension, limit);
+        }
+    }
+    @Override
     public void putChunkLocal(ChunkLocal local) {
         synchronized (lock) {
             delegate.putChunkLocal(local);

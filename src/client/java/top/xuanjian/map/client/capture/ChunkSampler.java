@@ -3,6 +3,7 @@ package top.xuanjian.map.client.capture;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import top.xuanjian.map.client.compat.McReflect;
+import top.xuanjian.map.core.chunk.BlockHash;
 import top.xuanjian.map.core.chunk.ChunkData;
 import top.xuanjian.map.core.net.Json;
 
@@ -66,8 +67,13 @@ public final class ChunkSampler {
         return step <= 2 ? 2 : 4;
     }
 
+    /**
+     * 采样一个区块。
+     *
+     * @param includeSurfaceBlocks v2：是否采集每列地表方块 hash16（surfaceBlockMatrix）
+     */
     public static Result sample(Object level, int chunkX, int chunkZ, int sampleStep,
-                                boolean includeBlockHist) {
+                                boolean includeBlockHist, boolean includeSurfaceBlocks) {
         if (level == null) {
             return Result.fail("level 为 null（未进入世界）");
         }
@@ -83,8 +89,12 @@ public final class ChunkSampler {
         List<String> warnings = new ArrayList<>();
         short[] heights = new short[n * n];
         int[] biomes = new int[n * n];
+        int[] surfaceBlocks = includeSurfaceBlocks ? new int[n * n] : null;
         java.util.Arrays.fill(heights, ChunkData.NO_DATA);
         java.util.Arrays.fill(biomes, -1);
+        if (surfaceBlocks != null) {
+            java.util.Arrays.fill(surfaceBlocks, BlockHash.NO_SURFACE);
+        }
         boolean anyHeight = false;
         boolean anyBiome = false;
 
@@ -129,6 +139,22 @@ public final class ChunkSampler {
                         blockNames.putIfAbsent(numeric, registryId(blockRegistry, block, blockIdCache));
                     }
                 }
+                if (surfaceBlocks != null) {
+                    // v2：该列「顶层非空气方块」；水面记录水方块本身；无数据/空列 = 0xFFFF
+                    Object surfaceBlock = block;
+                    int surfaceY = heights[idx] - 1;
+                    for (int probe = 0; surfaceBlock == null && probe < 8; probe++) {
+                        Object probePos = McReflect.construct(blockPosClass, worldX, surfaceY - probe, worldZ);
+                        if (probePos == null) {
+                            break;
+                        }
+                        surfaceBlock = readBlock(chunk, level, probePos);
+                    }
+                    String surfaceName = surfaceBlock == null ? null
+                            : registryId(blockRegistry, surfaceBlock, blockIdCache);
+                    surfaceBlocks[idx] = isAirBlockName(surfaceName)
+                            ? BlockHash.NO_SURFACE : BlockHash.hash16(surfaceName);
+                }
             }
         }
 
@@ -148,7 +174,7 @@ public final class ChunkSampler {
 
         short[] minMax = ChunkData.computeMinMax(heights);
         ChunkData data = new ChunkData(chunkX, chunkZ, step, n, minMax[0], minMax[1],
-                heights, biomeMatrix, blockHist);
+                heights, biomeMatrix, blockHist, surfaceBlocks);
 
         String structuresJson = readStructures(chunk, warnings);
         String blockEntitiesJson = readBlockEntities(chunk, warnings);
@@ -223,6 +249,14 @@ public final class ChunkSampler {
         return state == null ? null : McReflect.call(state, new String[]{"getBlock"});
     }
 
+    /** 空气类方块（含 cave_air / void_air）不算地表。 */
+    private static boolean isAirBlockName(String blockName) {
+        if (blockName == null || blockName.isBlank()) {
+            return true;
+        }
+        String name = blockName.trim();
+        return name.endsWith(":air") || name.endsWith(":cave_air") || name.endsWith(":void_air");
+    }
     private static Integer registryNumericId(Object registry, Object entry,
                                              Map<Object, Integer> cache) {
         if (registry == null || entry == null) {

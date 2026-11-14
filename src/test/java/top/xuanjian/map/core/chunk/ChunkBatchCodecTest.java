@@ -6,6 +6,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -163,6 +164,103 @@ class ChunkBatchCodecTest {
                 () -> new ChunkData(0, 0, 3, 5, (short) 0, (short) 0, heights, null, List.of()));
         assertThrows(IllegalArgumentException.class,
                 () -> new ChunkData(0, 0, 1, 16, (short) 0, (short) 0, new short[1], null, List.of()));
+    }
+
+    @Test
+    void surfaceBlockMatrixLayoutFollowsContractV2() {
+        // v2：flags bit3 + surfaceBlockMatrix u16[n*n]，紧跟 blockHist 之后
+        ChunkData base = sample(3, -4, 1, true, false);
+        int n = base.cells();
+        int[] surface = new int[n];
+        for (int i = 0; i < n; i++) {
+            surface[i] = switch (i % 3) {
+                case 0 -> top.xuanjian.map.core.chunk.BlockHash.hash16("minecraft:grass_block");
+                case 1 -> top.xuanjian.map.core.chunk.BlockHash.hash16("minecraft:water");
+                default -> top.xuanjian.map.core.chunk.BlockHash.hash16("minecraft:stone");
+            };
+        }
+        surface[7] = top.xuanjian.map.core.chunk.BlockHash.NO_SURFACE;
+        ChunkData withSurface = new ChunkData(base.chunkX(), base.chunkZ(), base.sampleStep(),
+                base.sampleSize(), base.minY(), base.maxY(), base.heights(), base.biomes(),
+                base.blockHistogram(), surface);
+
+        byte[] legacy = ChunkBatchCodec.encode(1, "minecraft:overworld", 1, List.of(base));
+        byte[] v2 = ChunkBatchCodec.encode(1, "minecraft:overworld", 1, List.of(withSurface));
+
+        // 1) 含 bit3 时长度正好多出 n*n*2 字节
+        assertEquals(n * 2, v2.length - legacy.length,
+                "surfaceBlockMatrix 应只增加 u16[n*n] 字节");
+        // 2) 严格按契约布局：批次头 20 + chunk 基础 15 + height 2n + biome 2n + blockHist + surface 2n
+        int expected = 20 + 15 + n * 2 + n * 2
+                + (1 + base.blockHistogram().size() * 6) + n * 2;
+        assertEquals(expected, v2.length, "v2 载荷总长度应符合契约布局");
+
+        // 3) flags 与解码内容
+        ChunkData decoded = ChunkBatchCodec.decode(v2).chunks().get(0);
+        assertEquals(ChunkData.FLAG_SURFACE_BLOCKS,
+                decoded.flags() & ChunkData.FLAG_SURFACE_BLOCKS, "必须置 flags bit3");
+        assertArrayEquals(surface, decoded.surfaceBlocks(), "地表方块 hash16 矩阵需原样往返");
+        assertEquals(top.xuanjian.map.core.chunk.BlockHash.NO_SURFACE,
+                decoded.surfaceBlocks()[7], "0xFFFF 无数据必须保留，不能填 0");
+
+        // 4) 逐字段验证「紧跟 blockHist 之后」：手工按契约顺序解析
+        top.xuanjian.map.core.codec.ByteReader r = new top.xuanjian.map.core.codec.ByteReader(v2);
+        r.ascii(5);
+        r.u8();
+        r.u8();
+        r.u8();
+        r.u32();
+        r.i64();
+        r.i32();
+        r.i32();
+        int step = r.u8();
+        int size = r.u8();
+        assertEquals(1, step);
+        assertEquals(16, size);
+        r.i16();
+        r.i16();
+        int flags = r.u8();
+        assertEquals(ChunkData.FLAG_SURFACE_BLOCKS, flags & ChunkData.FLAG_SURFACE_BLOCKS);
+        for (int i = 0; i < n; i++) {
+            r.i16();
+        }
+        for (int i = 0; i < n; i++) {
+            r.u16();
+        }
+        int entries = r.u8();
+        assertEquals(base.blockHistogram().size(), entries);
+        for (int i = 0; i < entries; i++) {
+            r.u16();
+            r.u32();
+        }
+        int[] parsedSurface = new int[n];
+        for (int i = 0; i < n; i++) {
+            parsedSurface[i] = r.u16();
+        }
+        assertFalse(r.hasRemaining(), "surfaceBlockMatrix 应是 chunk 段的最后一段数据");
+        assertArrayEquals(surface, parsedSurface, "surfaceBlockMatrix 必须紧跟 blockHist 之后");
+    }
+
+    @Test
+    void legacyPayloadWithoutSurfaceStillParses() {
+        ChunkData legacyChunk = sample(0, 0, 1, true, true);
+        byte[] legacy = ChunkBatchCodec.encode(7, "minecraft:the_nether", 3, List.of(legacyChunk));
+        ChunkData decoded = ChunkBatchCodec.decode(legacy).chunks().get(0);
+        assertFalse(decoded.hasSurfaceBlocks(), "旧格式不应带 surfaceBlockMatrix");
+        assertEquals(0, decoded.flags() & ChunkData.FLAG_SURFACE_BLOCKS);
+        assertEquals(ChunkData.NO_DATA, decoded.heights()[0], "旧格式的缺口仍需保留");
+        // 旧格式长度：头 20 + 基础 15 + height 2n + biome 2n（无 blockHist 段）
+        int n = decoded.cells();
+        assertEquals(20 + 15 + n * 2 + n * 2, legacy.length);
+    }
+
+    @Test
+    void surfaceMatrixMustMatchSampleGridSize() {
+        ChunkData base = sample(0, 0, 1, true, false);
+        assertThrows(IllegalArgumentException.class,
+                () -> new ChunkData(base.chunkX(), base.chunkZ(), base.sampleStep(),
+                        base.sampleSize(), base.minY(), base.maxY(), base.heights(),
+                        base.biomes(), base.blockHistogram(), new int[3]));
     }
 
     @Test

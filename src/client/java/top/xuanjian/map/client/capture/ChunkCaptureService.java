@@ -73,7 +73,9 @@ public final class ChunkCaptureService {
                 int cx = centerX + dx;
                 int cz = centerZ + dz;
                 String key = cx + "," + cz;
-                if (captured.contains(key)) {
+                // v2 补采：旧区块（缺 surfaceBlockMatrix）即使本会话采集过，也要重采一次
+                boolean needSurface = c.needsSurfaceRecapture(cx, cz);
+                if (captured.contains(key) && !needSurface) {
                     continue;
                 }
                 captured.add(key);
@@ -85,8 +87,9 @@ public final class ChunkCaptureService {
 
     private void captureOne(Object level, int chunkX, int chunkZ) {
         GisClient c = client;
+        boolean wantSurface = c.config().captureSurfaceBlocks();
         ChunkSampler.Result result = ChunkSampler.sample(level, chunkX, chunkZ,
-                c.config().sampleStep(), c.config().uploadBlockHistogram());
+                c.config().sampleStep(), c.config().uploadBlockHistogram(), wantSurface);
         if (!result.ok()) {
             String countKey = result.error();
             int count = failures.merge(countKey, 1, Integer::sum);
@@ -115,6 +118,8 @@ public final class ChunkCaptureService {
             c.store().putChunk(row);
             c.store().putChunkLocal(local);
             c.incrementCaptured();
+            // 补采完成后从待补采集合移除（上传由 Uploader 自动接管）
+            c.markSurfaceRecaptured(chunkX, chunkZ);
         });
     }
 

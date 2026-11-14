@@ -50,6 +50,11 @@ public class GisConfig {
     private int captureIntervalTicks = DEFAULT_CAPTURE_INTERVAL_TICKS;
     private int captureRadiusChunks = DEFAULT_CAPTURE_RADIUS_CHUNKS;
     private int sampleStep = DEFAULT_SAMPLE_STEP;
+    /**
+     * v2：是否采集/上传 surfaceBlockMatrix（地表方块 hash16）。
+     * 默认关闭：等服务端 decodeBatch v2 + palette 上线并回报后再默认开启（改默认值一行即可）。
+     */
+    private boolean captureSurfaceBlocks = false;
 
     private boolean uploadEnabled = true;
     private int uploadRatePerMinute = DEFAULT_UPLOAD_RATE_PER_MINUTE;
@@ -110,6 +115,7 @@ public class GisConfig {
         captureIntervalTicks = clampInt(intOf("capture.intervalTicks", DEFAULT_CAPTURE_INTERVAL_TICKS), 20, 12000);
         captureRadiusChunks = clampInt(intOf("capture.radiusChunks", DEFAULT_CAPTURE_RADIUS_CHUNKS), 0, 8);
         sampleStep = clampInt(intOf("capture.sampleStep", DEFAULT_SAMPLE_STEP), 1, 32);
+        captureSurfaceBlocks = bool("capture.surfaceBlocks", false);
 
         uploadEnabled = bool("upload.enabled", true);
         uploadRatePerMinute = clampInt(intOf("upload.ratePerMinute", DEFAULT_UPLOAD_RATE_PER_MINUTE), 1, 600);
@@ -140,6 +146,7 @@ public class GisConfig {
         raw.setProperty("capture.intervalTicks", String.valueOf(captureIntervalTicks));
         raw.setProperty("capture.radiusChunks", String.valueOf(captureRadiusChunks));
         raw.setProperty("capture.sampleStep", String.valueOf(sampleStep));
+        raw.setProperty("capture.surfaceBlocks", String.valueOf(captureSurfaceBlocks));
         raw.setProperty("upload.enabled", String.valueOf(uploadEnabled));
         raw.setProperty("upload.ratePerMinute", String.valueOf(uploadRatePerMinute));
         raw.setProperty("upload.batchChunks", String.valueOf(uploadBatchChunks));
@@ -175,6 +182,7 @@ public class GisConfig {
         captureIntervalTicks = DEFAULT_CAPTURE_INTERVAL_TICKS;
         captureRadiusChunks = DEFAULT_CAPTURE_RADIUS_CHUNKS;
         sampleStep = DEFAULT_SAMPLE_STEP;
+        captureSurfaceBlocks = false;
         uploadEnabled = true;
         uploadRatePerMinute = DEFAULT_UPLOAD_RATE_PER_MINUTE;
         uploadBatchChunks = DEFAULT_UPLOAD_BATCH_CHUNKS;
@@ -283,6 +291,14 @@ public class GisConfig {
 
     public void captureRadiusChunks(int value) {
         this.captureRadiusChunks = clampInt(value, 0, 8);
+    }
+
+    public boolean captureSurfaceBlocks() {
+        return captureSurfaceBlocks;
+    }
+
+    public void captureSurfaceBlocks(boolean value) {
+        this.captureSurfaceBlocks = value;
     }
 
     public int sampleStep() {

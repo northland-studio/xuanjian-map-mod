@@ -34,6 +34,7 @@ import top.xuanjian.map.core.world.WorldSession;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -96,6 +97,8 @@ public final class GisClient {
     private long locationAt;
     private String loginVerifier = "";
     private volatile String pendingAuthorizeUrl = "";
+    /** v2 补采：本地缺 surfaceBlockMatrix(bit3) 的区块坐标（只存 chunk 坐标，用于靠近时重采）。 */
+    private final Set<Long> surfaceRecapture = ConcurrentHashMap.newKeySet();
 
     private GisClient() {
         this.dataDir = FabricLoader.getInstance().getConfigDir().resolve("xuanjianmap");
@@ -256,6 +259,7 @@ public final class GisClient {
             GisLog.info(TAG, "世界绑定成功: " + session.worldKey() + " #" + session.worldId()
                     + " dim=" + session.dimension());
             syncNow();
+            refreshSurfaceBackfill();
         } catch (ApiException e) {
             session = localSession(serverKey, dimension, bindErrorReason(e));
             GisLog.warn(TAG, "世界绑定失败，进入本地模式（上传暂停）: " + e.describe());
@@ -355,6 +359,64 @@ public final class GisClient {
         locator.replaceDimension(dimension, objects);
     }
 
+    /* ==================== v2 地表方块补采（旧区块重传） ==================== */
+
+    /** 该区块是否需要补采（缺 surfaceBlockMatrix 且当前世界/维度匹配）。 */
+    public boolean needsSurfaceRecapture(int chunkX, int chunkZ) {
+        if (!config.captureSurfaceBlocks()) {
+            return false;
+        }
+        WorldSession current = session;
+        if (current == null || !current.registered() || current.dimension() == null) {
+            return false;
+        }
+        return surfaceRecapture.contains(coordKey(chunkX, chunkZ));
+    }
+
+    /** 补采完成后从待补采集合移除（上传由 Uploader 自动接管，同 chunk key upsert）。 */
+    public void markSurfaceRecaptured(int chunkX, int chunkZ) {
+        surfaceRecapture.remove(coordKey(chunkX, chunkZ));
+    }
+
+    /** 待补采区块数量（数据页/日志展示）。 */
+    public int surfaceBackfillCount() {
+        return surfaceRecapture.size();
+    }
+
+    /**
+     * 扫描本地缓存中「已存在但缺 surfaceBlockMatrix」的区块，加入待补采集合。
+     * 玩家靠近时 ChunkCaptureService 会重采并重传（不要求用户重新跑图）。
+     */
+    public void refreshSurfaceBackfill() {
+        if (!config.captureSurfaceBlocks()) {
+            surfaceRecapture.clear();
+            return;
+        }
+        WorldSession current = session;
+        if (current == null || !current.registered()) {
+            return;
+        }
+        dbExec.submit(() -> {
+            try {
+                List<int[]> coords = store.chunksNeedingSurface(current.worldId(),
+                        current.dimension(), 8192);
+                surfaceRecapture.clear();
+                for (int[] c : coords) {
+                    surfaceRecapture.add(coordKey(c[0], c[1]));
+                }
+                if (!coords.isEmpty()) {
+                    GisLog.info(TAG, "v2 地表方块补采：本地有 " + coords.size()
+                            + " 个旧区块待补（玩家靠近时自动重采并重传）");
+                }
+            } catch (RuntimeException e) {
+                GisLog.warn(TAG, "扫描待补采区块失败: " + e);
+            }
+        });
+    }
+
+    private static long coordKey(int chunkX, int chunkZ) {
+        return ((long) chunkX << 32) ^ (chunkZ & 0xFFFFFFFFL);
+    }
     /** 从本地 SQLite 重新加载 GIS 对象到内存空间索引（测试/手动刷新用）。 */
     public void reloadLocatorFromStore() {
         WorldSession current = session;
@@ -500,6 +562,7 @@ public final class GisClient {
     public void saveConfig() {
         config.save();
         refreshSnapshot();
+        refreshSurfaceBackfill();
         // 配置变化后重新绑定
         lastBindAttempt = 0;
         session = WorldSession.NONE;

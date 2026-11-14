@@ -57,22 +57,44 @@ serverName=樱梨`，三个维度 chunkCount=0（无地形数据）。**本地�
    - `X-GIS-Contract: 1`
    - 限制：压缩后 ≤ `maxCompressedBytes`=4MiB、解压后 ≤ `maxDecompressedBytes`=8MiB、
      单批 ≤ `maxChunkBatch`=64、`sampleSize` ≤ `maxSampleSize`=32、`uploadRatePerMinute`=60
-3. 二进制格式（**little endian**，与生产契约逐字段一致）：
+3. 二进制格式（**little endian**，与生产契约逐字段一致，v2）：
 
 ```
 magic "XJGIS"(5) | version u8=1 | dimensionCode u8 | chunkCount u8 | worldId u32 | batchSeq u64
 per chunk:
   chunkX i32, chunkZ i32, sampleStep u8(1..4), sampleSize u8(=16/sampleStep),
-  minY i16, maxY i16, flags u8(bit0 height / bit1 biome / bit2 blockHist),
+  minY i16, maxY i16,
+  flags u8(bit0 height / bit1 biome / bit2 blockHist / bit3 surfaceBlockMatrix)
   heightMatrix i16[n*n]        （-32768 = 无数据，客户端全程保留缺口，绝不填 0）
   [biomeMatrix u16[n*n]]       （0xFFFF = 未知）
   [blockHist: u8 n + n*(u16 blockId, u32 count)]
+  [surfaceBlockMatrix u16[n*n]]（v2 可选，紧跟 blockHist 之后；0xFFFF = 无数据/空列）
 ```
+
+### v2 地表方块矩阵（surfaceBlockMatrix）
+
+用途：浏览器端实时渲染「Minecraft 方块级彩色地图」（服务端只出数据 + palette，不生成图片）。
+
+- **hash16 算法**：`CRC32(方块资源名) & 0xFFFF`，例如
+  `CRC32("minecraft:grass_block") & 0xFFFF == 57453`；与站点 `GET /api/gis/map/palette`
+  的 `blocks[hash16]` 使用同一算法（Windows .NET/Java 均验证过一致性）。
+- **地表方块定义**：该列**顶层非空气方块**；若顶层是水，记录**水方块本身**（不是水下方块）；
+  无数据/空列记 `0xFFFF`。
+- **采样网格**：与 `heightMatrix` 完全一致（相同 `sampleStep/sampleSize`，逐列一次方块读取，
+  复用 blockHist 已读取的方块对象，渲染线程外无额外开销）。
+- **开关**：`capture.surfaceBlocks`（当前**默认 false**）。等服务端 `decodeBatch` v2 + palette
+  上线并回报后，把默认值改为 true 即可（一行配置变更，无需发版逻辑改动）。
+- **旧区块补传**：本地缓存中 `flags & 8 == 0` 的旧区块会被标记待补采；玩家靠近时客户端
+  重采并重传（服务端按 `(worldId,dimension,chunkX,chunkZ)` upsert 覆盖为 v2），用户无需重新跑图。
+  生产 `hetao-main`（id=3）已有 51 个旧格式 chunk，服务端上线后由该机制自动补传。
+- **兼容**：不带 bit3 的旧载荷服务端照常接收，网页端用「高度 + 生物群系」兜底着色；客户端解析
+  也同时兼容 v1/v2 两种载荷（`ChunkBodyCodec` 有旧格式回归测试）。
 
 4. dimensionCode（生产契约明确）：`overworld=0, nether=1, end=2, custom=3`
 5. 幂等：同 `(worldId,dimension,chunkX,chunkZ)` upsert；同 Idempotency-Key 重放 → 客户端按成功处理
 6. 重试：1s/2s/4s…上限 60s；429 读 `retryAfter`；网络恢复按 `next_attempt_at` 续传；
    失败只改状态、不删本地数据
+7. 本地缓存 `chunks.flags` 同步记录 bit3，用于判断「已上传但缺 surface」并补采重传
 
 ## 查询
 

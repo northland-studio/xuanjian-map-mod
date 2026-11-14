@@ -181,7 +181,9 @@ public final class SqliteGisStore implements GisStore {
                   max_y=excluded.max_y,
                   flags=excluded.flags,
                   captured_at=excluded.captured_at,
-                  state=CASE WHEN chunks.state='UPLOADED' THEN 'UPLOADED' ELSE excluded.state END
+                  state=CASE WHEN chunks.state='UPLOADED'
+                       AND (excluded.flags & 8) = (chunks.flags & 8)
+                      THEN 'UPLOADED' ELSE excluded.state END
                 """;
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ChunkKey k = row.key();
@@ -316,6 +318,27 @@ public final class SqliteGisStore implements GisStore {
         }
     }
 
+    @Override
+    public List<int[]> chunksNeedingSurface(long worldId, String dimension, int limit) {
+        String sql = "SELECT chunk_x, chunk_z FROM chunks"
+                + " WHERE world_id=? AND dimension=? AND (flags & 8)=0"
+                + " AND state IN ('CAPTURED','QUEUED','UPLOADED')"
+                + " ORDER BY captured_at DESC, chunk_x, chunk_z LIMIT ?";
+        List<int[]> out = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, worldId);
+            ps.setString(2, dimension);
+            ps.setInt(3, Math.max(1, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new int[]{rs.getInt(1), rs.getInt(2)});
+                }
+            }
+        } catch (SQLException e) {
+            throw new StoreException("查询待补采区块失败", e);
+        }
+        return out;
+    }
     /* ==================== chunk locals（仅本地，不上传） ==================== */
 
     @Override

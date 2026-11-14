@@ -45,7 +45,9 @@ public final class MemoryGisStore implements GisStore {
     @Override
     public synchronized void putChunk(ChunkRow row) {
         ChunkRow existing = chunks.get(row.key());
-        if (existing != null && existing.state() == ChunkState.UPLOADED) {
+        boolean sameSurfaceFlag = existing != null
+                && ((existing.flags() & 8) == (row.flags() & 8));
+        if (existing != null && existing.state() == ChunkState.UPLOADED && sameSurfaceFlag) {
             chunks.put(row.key(), new ChunkRow(row.key(), ChunkState.UPLOADED, row.payload(),
                     row.sampleStep(), row.sampleSize(), row.minY(), row.maxY(), row.flags(),
                     row.capturedAt(), existing.attempts(), existing.lastError(), existing.nextAttemptAt()));
@@ -118,6 +120,26 @@ public final class MemoryGisStore implements GisStore {
         chunks.keySet().removeIf(k -> k.worldId() == worldId && k.dimension().equals(dimension));
     }
 
+    @Override
+    public synchronized List<int[]> chunksNeedingSurface(long worldId, String dimension, int limit) {
+        List<int[]> out = new ArrayList<>();
+        for (ChunkRow row : chunks.values()) {
+            if (row.key().worldId() != worldId || !row.key().dimension().equals(dimension)) {
+                continue;
+            }
+            if ((row.flags() & 8) != 0) {
+                continue;
+            }
+            if (row.state() == ChunkState.FAILED) {
+                continue;
+            }
+            out.add(new int[]{row.key().chunkX(), row.key().chunkZ()});
+            if (out.size() >= Math.max(1, limit)) {
+                break;
+            }
+        }
+        return out;
+    }
     @Override
     public synchronized void putChunkLocal(ChunkLocal local) {
         chunkLocals.put(new ChunkKey(local.worldId(), local.dimension(), local.chunkX(), local.chunkZ()),
