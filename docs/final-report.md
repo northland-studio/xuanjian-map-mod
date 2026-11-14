@@ -17,10 +17,10 @@
 
 ### Actions 运行链接（最近一次全绿）
 
-- 26 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625114831
-- 26 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625114826
-- 1.21 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625151516
-- 1.21 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43625151522
+- 26 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43636245387
+- 26 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43636245372
+- 1.21 / Build：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43636254609
+- 1.21 / 客户端 gametest：https://github.com/northland-studio/xuanjian-map-mod/actions/runs/43636254604
 
 ## 2. Artifacts 清单
 
