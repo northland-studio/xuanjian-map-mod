@@ -1,5 +1,6 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	// 1.21 分支沿用 xuanjian-mod 的 fabric-loom-remap（官方映射 + remap）
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
 	id 'maven-publish'
 }
 
@@ -38,8 +39,9 @@ fabricApi {
 
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	mappings loom.officialMojangMappings()
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
 	// 本地缓存：SQLite（规范要求）。驱动随 jar 打包，运行时自解压 native。
 	implementation "org.xerial:sqlite-jdbc:${project.sqlite_version}"
@@ -66,7 +68,7 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.encoding = "UTF-8"
-	it.options.release = 25
+	it.options.release = 21
 }
 
 test {
@@ -76,26 +78,16 @@ test {
 		events "passed", "skipped", "failed"
 		exceptionFormat "full"
 	}
-	// 测试失败时保留报告，CI 上传 artifact 用
 	reports {
 		junitXml.required = true
 		html.required = true
 	}
 }
 
-// 客户端 gametest：CI 无头环境下关闭网络同步器（Fabric 官方建议），避免偶发失败
-tasks.configureEach { t ->
-	if (t.name == "runClientGameTest" || t.name == "runProductionClientGameTest") {
-		if (t.hasProperty("jvmArgs")) {
-			t.jvmArgs "-Dfabric.client.gametest.disableNetworkSynchronizer=true"
-		}
-	}
-}
-
 java {
 	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
 }
 
 jar {
@@ -110,6 +102,15 @@ publishing {
 	publications {
 		create("mavenJava", MavenPublication) {
 			from components.java
+		}
+	}
+}
+
+// 客户端 gametest：CI 无头环境下关闭网络同步器（Fabric 官方建议），避免偶发失败
+tasks.configureEach { t ->
+	if (t.name == "runClientGameTest" || t.name == "runProductionClientGameTest") {
+		if (t.hasProperty("jvmArgs")) {
+			t.jvmArgs "-Dfabric.client.gametest.disableNetworkSynchronizer=true"
 		}
 	}
 }

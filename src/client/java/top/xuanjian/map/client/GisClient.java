@@ -382,8 +382,12 @@ public final class GisClient {
         }
         try {
             Object component = net.minecraft.network.chat.Component.literal("§b[玄剑GIS] §f" + message);
-            McReflect.call(mc.player, new String[]{"sendSystemMessage", "displayClientMessage"},
-                    component);
+            // 1.21：displayClientMessage(Component, boolean)；26：sendSystemMessage(Component)
+            if (McReflect.hasMethod(mc.player, "displayClientMessage", component, false)) {
+                McReflect.call(mc.player, "displayClientMessage", component, false);
+            } else {
+                McReflect.call(mc.player, "sendSystemMessage", component);
+            }
         } catch (Exception e) {
             GisLog.debug(TAG, "发送提示失败: " + e);
         }

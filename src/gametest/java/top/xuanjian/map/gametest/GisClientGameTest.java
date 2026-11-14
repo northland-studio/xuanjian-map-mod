@@ -122,7 +122,7 @@ public class GisClientGameTest implements FabricClientGameTest {
         context.setScreen(() -> null);
         context.waitTicks(5);
         try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
-            singleplayer.getConnection().waitForChunksRender();
+            singleplayer.getClientWorld().waitForChunksRender();
             context.waitTicks(20);
 
             int captured = 0;

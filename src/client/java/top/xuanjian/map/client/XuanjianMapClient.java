@@ -2,7 +2,7 @@ package top.xuanjian.map.client;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
@@ -17,12 +17,11 @@ import top.xuanjian.map.client.hud.GisHudRenderer;
 import top.xuanjian.map.core.util.GisLog;
 
 /**
- * 客户端入口：
- * <ul>
- *   <li>初始化 GIS 客户端服务（配置 / SQLite / 上传 / 同步）；</li>
- *   <li>注册 HUD 元素（HudElementRegistry，常驻）与按键（`=` 展开/收起、`G` 打开 GIS 界面）；</li>
- *   <li>每 tick 驱动采集/上传/同步调度（真正工作都在后台线程）。</li>
- * </ul>
+ * 客户端入口（1.21.11 版）：
+ * 初始化 GIS 服务、注册 HUD 元素与按键（`=` 展开/收起、`G` 打开界面）、驱动每 tick 调度。
+ *
+ * <p>1.21 适配点：{@code KeyBindingHelper.registerKeyBinding}、HUD 回调使用 {@code GuiGraphics}、
+ * 切界面用 {@code Minecraft.setScreen}、聊天用 {@code player.displayClientMessage}。
  */
 public class XuanjianMapClient implements ClientModInitializer {
 
@@ -52,12 +51,10 @@ public class XuanjianMapClient implements ClientModInitializer {
 
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath(XuanjianMap.MOD_ID, "gis"));
-        // `=`：HUD 展开/收起（规范要求）
-        hudToggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+        hudToggleKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.xuanjianmap.hud_toggle", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_EQUAL, category));
-        // `G`：打开 GIS 界面
-        openGuiKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+        openGuiKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.xuanjianmap.open_gui", com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_G, category));
 
@@ -74,8 +71,8 @@ public class XuanjianMapClient implements ClientModInitializer {
                 gis.toggleHudExpanded();
             }
             while (openGuiKey != null && openGuiKey.consumeClick()) {
-                if (client.gui != null && client.gui.screen() == null) {
-                    client.gui.setScreen(new GisMainScreen());
+                if (client.screen == null) {
+                    client.setScreen(new GisMainScreen());
                 }
             }
             gis.tick(client);
@@ -88,7 +85,7 @@ public class XuanjianMapClient implements ClientModInitializer {
             }
         });
 
-        LOGGER.info("[{}] 客户端 GIS 初始化完成（HUD=常驻，`=` 展开/收起，`G` 打开界面）",
+        LOGGER.info("[{}] 客户端 GIS 初始化完成（1.21.11；HUD=常驻，`=` 展开/收起，`G` 打开界面）",
                 XuanjianMap.MOD_ID);
     }
 }

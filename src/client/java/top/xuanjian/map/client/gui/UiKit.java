@@ -2,12 +2,13 @@ package top.xuanjian.map.client.gui;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * 玄剑 GIS 界面主题与绘制工具（Minecraft 26.2：{@code GuiGraphicsExtractor}，颜色必须 8 位 ARGB）。
+ * 玄剑 GIS 界面主题与绘制工具（Minecraft 1.21.11：{@link GuiGraphics}，颜色 8 位 ARGB）。
  *
- * <p>与 xuanjian-mod 的视觉风格保持一致：深色半透明面板 + 蓝色渐变标题条 + 圆角卡片。
+ * <p>与 26 分支视觉一致，但渲染入口/文本 API 使用 1.21 版本；圆角描边用 4 条 fill 实现，
+ * 避免依赖不同版本的 outline 签名。
  */
 public final class UiKit {
 
@@ -48,30 +49,25 @@ public final class UiKit {
 
     /* ==================== 绘制 ==================== */
 
-    public static void panel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
+    public static void panel(GuiGraphics g, int x, int y, int w, int h) {
         roundedFill(g, x, y, w, h, PANEL_BG);
         roundedOutline(g, x, y, w, h, PANEL_BORDER);
     }
 
-    public static void headerBar(GuiGraphicsExtractor g, int x, int y, int w, int h) {
+    public static void headerBar(GuiGraphics g, int x, int y, int w, int h) {
         g.fillGradient(x, y, x + w, y + h, HEADER_TOP, HEADER_BOTTOM);
     }
 
-    public static void card(GuiGraphicsExtractor g, int x, int y, int w, int h, boolean hover) {
+    public static void card(GuiGraphics g, int x, int y, int w, int h, boolean hover) {
         roundedFill(g, x, y, w, h, hover ? CARD_BG_HOVER : CARD_BG);
         roundedOutline(g, x, y, w, h, CARD_BORDER);
     }
 
-    public static void cardActive(GuiGraphicsExtractor g, int x, int y, int w, int h) {
-        roundedFill(g, x, y, w, h, CARD_BG_ACTIVE);
-        roundedOutline(g, x, y, w, h, ACCENT);
-    }
-
-    public static void divider(GuiGraphicsExtractor g, int x1, int x2, int y) {
+    public static void divider(GuiGraphics g, int x1, int x2, int y) {
         g.fill(x1, y, x2, y + 1, DIVIDER);
     }
 
-    public static void roundedFill(GuiGraphicsExtractor g, int x, int y, int w, int h, int color) {
+    public static void roundedFill(GuiGraphics g, int x, int y, int w, int h, int color) {
         if (w <= 0 || h <= 0) {
             return;
         }
@@ -83,9 +79,9 @@ public final class UiKit {
         g.fill(x, y + 1, x + w, y + h - 1, color);
     }
 
-    public static void roundedOutline(GuiGraphicsExtractor g, int x, int y, int w, int h, int color) {
+    public static void roundedOutline(GuiGraphics g, int x, int y, int w, int h, int color) {
         if (w <= 2 || h <= 2) {
-            g.outline(x, y, x + w, y + h, color);
+            g.fill(x, y, x + w, y + h, color);
             return;
         }
         g.fill(x + 1, y, x + w - 1, y + 1, color);
@@ -94,7 +90,7 @@ public final class UiKit {
         g.fill(x + w - 1, y + 1, x + w, y + h - 1, color);
     }
 
-    public static void bar(GuiGraphicsExtractor g, int x, int y, int w, int h, double ratio, int color) {
+    public static void bar(GuiGraphics g, int x, int y, int w, int h, double ratio, int color) {
         roundedFill(g, x, y, w, h, 0x33FFFFFF);
         int fillW = (int) Math.max(0, Math.min(1, ratio) * w);
         if (fillW > 0) {
@@ -102,8 +98,7 @@ public final class UiKit {
         }
     }
 
-    /** 画线（GUI 只有矩形填充，用逐像素/水平段填充近似）。 */
-    public static void line(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int color, int thickness) {
+    public static void line(GuiGraphics g, int x1, int y1, int x2, int y2, int color, int thickness) {
         int dx = Math.abs(x2 - x1);
         int dy = Math.abs(y2 - y1);
         int steps = Math.max(dx, dy);
@@ -118,8 +113,7 @@ public final class UiKit {
         }
     }
 
-    /** GeoJSON 多边形（屏幕坐标）描边 + 半透明填充（扫描线，多边形通常顶点不多）。 */
-    public static void polygon(GuiGraphicsExtractor g, int[] xs, int[] zs, int fillColor,
+    public static void polygon(GuiGraphics g, int[] xs, int[] zs, int fillColor,
                                int borderColor, int thickness) {
         if (xs.length < 3) {
             return;
@@ -160,16 +154,17 @@ public final class UiKit {
         return Minecraft.getInstance().font;
     }
 
-    public static void text(GuiGraphicsExtractor g, Font font, String s, int x, int y, int color) {
-        g.text(font, s == null ? "" : s, x, y, color, true);
+    public static void text(GuiGraphics g, Font font, String s, int x, int y, int color) {
+        g.drawString(font, s == null ? "" : s, x, y, color, true);
     }
 
-    public static void textCenter(GuiGraphicsExtractor g, Font font, String s, int centerX, int y, int color) {
-        g.centeredText(font, s == null ? "" : s, centerX, y, color);
+    public static void textCenter(GuiGraphics g, Font font, String s, int centerX, int y, int color) {
+        g.drawCenteredString(font, s == null ? "" : s, centerX, y, color);
     }
 
-    public static void textRight(GuiGraphicsExtractor g, Font font, String s, int rightX, int y, int color) {
-        g.text(font, s == null ? "" : s, rightX - font.width(s == null ? "" : s), y, color, true);
+    public static void textRight(GuiGraphics g, Font font, String s, int rightX, int y, int color) {
+        String value = s == null ? "" : s;
+        g.drawString(font, value, rightX - font.width(value), y, color, true);
     }
 
     public static int vCenter(Font font, int top, int h) {
@@ -194,7 +189,6 @@ public final class UiKit {
         return sb + "…";
     }
 
-    /** #RRGGBB / RRGGBB → ARGB，失败返回 fallback。 */
     public static int parseColor(String hex, int fallback) {
         if (hex == null) {
             return fallback;

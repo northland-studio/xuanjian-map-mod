@@ -1,6 +1,6 @@
 package top.xuanjian.map.client.gui;
 
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import top.xuanjian.map.client.GisClient;
@@ -16,13 +16,10 @@ import top.xuanjian.map.core.model.GisObjectKind;
 import java.util.List;
 
 /**
- * 自有 GIS 叠加渲染器（World Map 全图层版）。
+ * 自有 GIS 叠加渲染器（1.21.11 版，World Map 全图层）。
  *
- * <p>规范第十一节：Xaero 无官方 API → 用自有渲染兜底。本界面完全独立于 Xaero：
- * 不注入其渲染管线、不读写其缓存文件、不改变其缩放/拖动/定位。
- *
- * <p>图层：城区边界（多边形）、道路（按真实宽度的折线）、Marker、其他实体；可逐层开关。
- * 交互：居中玩家 / 放大 / 缩小 / 刷新（按钮式，避免与 Xaero 的滚轮/拖拽冲突）。
+ * <p>Xaero 无官方 API → 自有渲染兜底；独立于 Xaero，不注入其管线、不读写其缓存。
+ * 图层：城区多边形 / 道路（真实宽度）/ Marker / 其他；按钮式缩放居中，避免与 Xaero 冲突。
  */
 public class GisMapScreen extends Screen {
 
@@ -78,24 +75,23 @@ public class GisMapScreen extends Screen {
         computeLayout();
         int btnY = py + 4;
         int right = px + pw - 6;
-        this.addRenderableWidget(new XButton(right - 40, btnY, 36, 20, "关闭", XButton.Style.GHOST, this::onClose));
+        this.addRenderableWidget(Buttons.of(right - 40, btnY, 36, 20, "关闭", this::onClose));
         right -= 42;
-        this.addRenderableWidget(new XButton(right - 36, btnY, 32, 20, "刷新", XButton.Style.GHOST, this::recenter));
+        this.addRenderableWidget(Buttons.of(right - 36, btnY, 32, 20, "刷新", this::recenter));
         right -= 38;
-        this.addRenderableWidget(new XButton(right - 32, btnY, 28, 20, "+", XButton.Style.GHOST, () -> {
+        this.addRenderableWidget(Buttons.of(right - 32, btnY, 28, 20, "+", () -> {
             zoom = Math.min(SCALES.length - 1, zoom + 1);
         }));
         right -= 34;
-        this.addRenderableWidget(new XButton(right - 32, btnY, 28, 20, "-", XButton.Style.GHOST, () -> {
+        this.addRenderableWidget(Buttons.of(right - 32, btnY, 28, 20, "-", () -> {
             zoom = Math.max(0, zoom - 1);
         }));
         right -= 34;
-        this.addRenderableWidget(new XButton(right - 56, btnY, 52, 20, "居中", XButton.Style.GHOST, () -> {
+        this.addRenderableWidget(Buttons.of(right - 56, btnY, 52, 20, "居中", () -> {
             centered = false;
             recenter();
         }));
 
-        // 图层开关（底部一排）
         GisClient client = GisClient.get();
         int toggleW = Math.max(72, (viewW - 12) / 4);
         int toggleY = py + ph - 22;
@@ -103,13 +99,13 @@ public class GisMapScreen extends Screen {
         for (int i = 0; i < 4; i++) {
             final int index = i;
             boolean on = layerOn(client, index);
-            this.addRenderableWidget(new XButton(viewX + i * (toggleW + 4), toggleY, toggleW, 18,
-                    labels[i] + (on ? " ✓" : " ✗"), XButton.Style.SECONDARY, () -> {
-                if (client != null) {
-                    client.toggleLayer(index);
-                }
-                buildWidgets();
-            }));
+            this.addRenderableWidget(Buttons.of(viewX + i * (toggleW + 4), toggleY, toggleW, 18,
+                    labels[i] + (on ? " ✓" : " ✗"), () -> {
+                        if (client != null) {
+                            client.toggleLayer(index);
+                        }
+                        buildWidgets();
+                    }));
         }
     }
 
@@ -158,26 +154,25 @@ public class GisMapScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         computeLayout();
         UiKit.panel(g, px, py, pw, ph);
         UiKit.headerBar(g, px + 1, py + 1, pw - 2, UiKit.HEADER_H - 1);
-        super.extractRenderState(g, mouseX, mouseY, delta);
+        super.render(g, mouseX, mouseY, delta);
 
         UiKit.text(g, this.font, "玄剑 GIS 地图", px + 10,
                 UiKit.vCenter(this.font, py, UiKit.HEADER_H), UiKit.TEXT);
-        UiKit.textRight(g, this.font, "自有叠加渲染 · 不修改 Xaero", px + pw - 12,
-                py + 9, UiKit.TEXT_MUTED);
+        UiKit.textRight(g, this.font, "自有叠加渲染 · 不修改 Xaero", px + pw - 12, py + 9, UiKit.TEXT_MUTED);
         drawMap(g);
-        drawLegend(g);
+        UiKit.text(g, this.font, "缩放 " + String.format("%.2f", scale()) + " px/block · 网格 "
+                        + STEP[zoom] + " 格 · 中心 (" + (long) centerX + ", " + (long) centerZ + ")",
+                viewX, py + ph - 32, UiKit.TEXT_MUTED);
     }
 
-    private void drawMap(GuiGraphicsExtractor g) {
-        // 地图背景
+    private void drawMap(GuiGraphics g) {
         g.fill(viewX, viewY, viewX + viewW, viewY + viewH, 0xF00B1220);
         UiKit.roundedOutline(g, viewX, viewY, viewW, viewH, 0x557CB0FF);
 
-        // 网格（按缩放级别，避免过密）
         int step = STEP[zoom];
         int[] pos = GisHudRenderer.playerPosition(this.minecraft);
         int gridColor = 0x18FFFFFF;
@@ -227,9 +222,8 @@ public class GisMapScreen extends Screen {
                 }
                 UiKit.polygon(g, xs, zs, UiKit.DISTRICT_FILL, UiKit.DISTRICT_BORDER, 1);
                 if (scale() >= 0.1) {
-                    int lx = sx(object.bbox().centerX());
-                    int lz = sz(object.bbox().centerZ());
-                    UiKit.textCenter(g, this.font, object.name(), lx, lz, UiKit.ACCENT);
+                    UiKit.textCenter(g, this.font, object.name(), sx(object.bbox().centerX()),
+                            sz(object.bbox().centerZ()), UiKit.ACCENT);
                 }
             } else if (object.kind() == GisObjectKind.ROAD && object.geometry() instanceof Geometry.GisLine line) {
                 int thickness = Math.max(1, (int) Math.round(object.roadWidth() * scale()));
@@ -239,9 +233,8 @@ public class GisMapScreen extends Screen {
                             sx(points[i][0]), sz(points[i][1]), UiKit.ROAD, thickness);
                 }
                 if (scale() >= 0.25 && !object.name().isBlank()) {
-                    int mx = sx(points[0][0]);
-                    int mz = sz(points[0][1]);
-                    UiKit.text(g, this.font, object.name(), mx + 2, mz - 10, UiKit.ROAD);
+                    UiKit.text(g, this.font, object.name(), sx(points[0][0]) + 2,
+                            sz(points[0][1]) - 10, UiKit.ROAD);
                 }
             } else if (object.kind() == GisObjectKind.MARKER) {
                 var point = object.geometry().asPoint();
@@ -257,7 +250,6 @@ public class GisMapScreen extends Screen {
             }
         }
 
-        // 玩家位置
         int playerX = sx(pos[0]);
         int playerZ = sz(pos[2]);
         g.fill(playerX - 3, playerZ, playerX + 4, playerZ + 1, 0xFFFFFFFF);
@@ -265,7 +257,8 @@ public class GisMapScreen extends Screen {
         UiKit.text(g, this.font, "玩家", playerX + 5, playerZ - 4, UiKit.TEXT);
 
         UiKit.text(g, this.font, "维度：" + Dimensions.labelZh(dimension)
-                        + " · 屏内对象 " + objects.size() + " · 本地对象 " + client.locator().objectCount(dimension),
+                        + " · 屏内对象 " + objects.size() + " · 本地对象 "
+                        + client.locator().objectCount(dimension),
                 viewX + 4, viewY + viewH - 12, UiKit.TEXT_MUTED);
         if (objects.isEmpty() && snapshot.stats().objectCount() == 0) {
             UiKit.textCenter(g, this.font, "本地暂无 GIS 对象（等待 /api/gis/client/sync 同步）",
@@ -273,16 +266,9 @@ public class GisMapScreen extends Screen {
         }
     }
 
-    private void drawLegend(GuiGraphicsExtractor g) {
-        int y = py + ph - 34;
-        UiKit.text(g, this.font, "缩放 " + String.format("%.2f", scale()) + " px/block · 网格 "
-                        + STEP[zoom] + " 格 · 中心 (" + (long) centerX + ", " + (long) centerZ + ")",
-                viewX, y - 10, UiKit.TEXT_MUTED);
-    }
-
     @Override
     public void onClose() {
-        this.minecraft.gui.setScreen(parent);
+        this.minecraft.setScreen(parent);
     }
 
     @Override

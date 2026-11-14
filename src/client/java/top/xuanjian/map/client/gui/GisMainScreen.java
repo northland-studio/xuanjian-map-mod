@@ -1,24 +1,24 @@
 package top.xuanjian.map.client.gui;
 
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import top.xuanjian.map.client.GisClient;
 import top.xuanjian.map.client.GisSnapshot;
-import top.xuanjian.map.core.model.Limits;
 import top.xuanjian.map.core.model.RegisteredWorld;
 import top.xuanjian.map.core.storage.GisStore;
 
 import java.util.List;
 
 /**
- * 玄剑 GIS 主界面：左侧导航 + 右侧内容，逐页覆盖
+ * 玄剑 GIS 主界面（1.21.11 版）：左侧导航 + 右侧内容，逐页覆盖
  * 概览 / 图层管理 / 世界选择 / 地图数据状态 / GIS 设置。
  *
- * <p>所有数据来自 {@link GisSnapshot}（后台线程更新的不可变快照），渲染线程不做 IO。
- * 26.2 约定：{@code extractRenderState(GuiGraphicsExtractor, int, int, float)}，
- * 切界面用 {@code Minecraft.getInstance().gui.setScreen(...)}，颜色 8 位 ARGB。
+ * <p>1.21 适配点：渲染入口 {@code render(GuiGraphics,int,int,float)}、
+ * 原版 {@link Button} 作为控件、切界面 {@code Minecraft.setScreen(...)}。
+ * 数据来自 {@link GisSnapshot}（后台快照），渲染线程不做 IO。
  */
 public class GisMainScreen extends Screen {
 
@@ -55,7 +55,6 @@ public class GisMainScreen extends Screen {
     private int toastColor = UiKit.SUCCESS;
     private long toastUntil;
 
-    /* 设置页输入框 */
     private EditBox apiBaseBox;
     private EditBox serverKeyBox;
     private EditBox rateBox;
@@ -72,8 +71,6 @@ public class GisMainScreen extends Screen {
         super(Component.literal("玄剑 GIS"));
         this.parent = parent;
     }
-
-    /* ==================== 布局与 widget ==================== */
 
     @Override
     protected void init() {
@@ -100,23 +97,24 @@ public class GisMainScreen extends Screen {
         int navX = px + 8;
         int navY = py + UiKit.HEADER_H + 10;
         for (Page p : Page.values()) {
-            this.addRenderableWidget(new XButton(navX + 4, navY, UiKit.NAV_W - 8, UiKit.NAV_ITEM_H,
-                    p.label, XButton.Style.NAV, () -> {
-                page = p;
-                toast = "";
-                buildWidgets();
-            }).selected(page == p));
+            String label = (page == p ? "▶ " : "  ") + p.label;
+            this.addRenderableWidget(Buttons.of(navX + 4, navY, UiKit.NAV_W - 8, UiKit.NAV_ITEM_H,
+                    label, () -> {
+                        page = p;
+                        toast = "";
+                        buildWidgets();
+                    }));
             navY += UiKit.NAV_ITEM_H + 2;
         }
 
         int btnY = py + 4;
         int right = px + pw - 6;
-        this.addRenderableWidget(new XButton(right - 40, btnY, 36, 20, "关闭", XButton.Style.GHOST, this::onClose));
+        this.addRenderableWidget(Buttons.of(right - 40, btnY, 36, 20, "关闭", this::onClose));
         right -= 42;
-        this.addRenderableWidget(new XButton(right - 56, btnY, 52, 20, "GIS 地图", XButton.Style.GHOST,
-                () -> this.minecraft.gui.setScreen(new GisMapScreen(this))));
+        this.addRenderableWidget(Buttons.of(right - 56, btnY, 52, 20, "GIS 地图",
+                () -> this.minecraft.setScreen(new GisMapScreen(this))));
         right -= 58;
-        this.addRenderableWidget(new XButton(right - 36, btnY, 32, 20, "刷新", XButton.Style.GHOST, this::refreshData));
+        this.addRenderableWidget(Buttons.of(right - 36, btnY, 32, 20, "刷新", this::refreshData));
 
         switch (page) {
             case OVERVIEW -> buildOverview();
@@ -137,12 +135,9 @@ public class GisMainScreen extends Screen {
         client.refreshSnapshotSoon();
     }
 
-    /* ==================== 各页 widget ==================== */
-
     private void buildOverview() {
         int y = py + ph - 26;
-        this.addRenderableWidget(new XButton(contentX, y, 90, UiKit.BTN_H, "立即同步",
-                XButton.Style.PRIMARY, () -> {
+        this.addRenderableWidget(Buttons.of(contentX, y, 90, UiKit.BTN_H, "立即同步", () -> {
             GisClient client = GisClient.get();
             if (client != null) {
                 client.forceSync();
@@ -150,10 +145,9 @@ public class GisMainScreen extends Screen {
             }
             note("已触发同步与重新绑定");
         }));
-        this.addRenderableWidget(new XButton(contentX + 96, y, 90, UiKit.BTN_H, "打开地图",
-                XButton.Style.SECONDARY, () -> this.minecraft.gui.setScreen(new GisMapScreen(this))));
-        this.addRenderableWidget(new XButton(contentX + 192, y, 90, UiKit.BTN_H, "设置",
-                XButton.Style.SECONDARY, () -> {
+        this.addRenderableWidget(Buttons.of(contentX + 96, y, 90, UiKit.BTN_H, "打开地图",
+                () -> this.minecraft.setScreen(new GisMapScreen(this))));
+        this.addRenderableWidget(Buttons.of(contentX + 192, y, 90, UiKit.BTN_H, "设置", () -> {
             page = Page.SETTINGS;
             buildWidgets();
         }));
@@ -164,19 +158,18 @@ public class GisMainScreen extends Screen {
         String[] labels = {"城区边界", "道路", "建筑 Marker", "其他 GIS 实体"};
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
-            this.addRenderableWidget(new XButton(contentX + contentW - 76, y + i * 26, 76, 18,
-                    layerOn(i) ? "已开启" : "已关闭", XButton.Style.SECONDARY, () -> {
-                GisClient client = GisClient.get();
-                if (client != null) {
-                    boolean value = client.toggleLayer(index);
-                    note(labels[index] + (value ? " 已开启" : " 已关闭"));
-                }
-                buildWidgets();
-            }));
+            this.addRenderableWidget(Buttons.of(contentX + contentW - 76, y + i * 26, 76, 18,
+                    layerOn(i) ? "已开启" : "已关闭", () -> {
+                        GisClient client = GisClient.get();
+                        if (client != null) {
+                            boolean value = client.toggleLayer(index);
+                            note(labels[index] + (value ? " 已开启" : " 已关闭"));
+                        }
+                        buildWidgets();
+                    }));
         }
-        int bottom = py + ph - 26;
-        this.addRenderableWidget(new XButton(contentX, bottom, 90, UiKit.BTN_H, "打开地图",
-                XButton.Style.PRIMARY, () -> this.minecraft.gui.setScreen(new GisMapScreen(this))));
+        this.addRenderableWidget(Buttons.of(contentX, py + ph - 26, 90, UiKit.BTN_H, "打开地图",
+                () -> this.minecraft.setScreen(new GisMapScreen(this))));
     }
 
     private boolean layerOn(int index) {
@@ -194,38 +187,33 @@ public class GisMainScreen extends Screen {
 
     private void buildWorlds() {
         int bottom = py + ph - 26;
-        this.addRenderableWidget(new XButton(contentX, bottom, 90, UiKit.BTN_H, "重新绑定",
-                XButton.Style.PRIMARY, () -> {
+        this.addRenderableWidget(Buttons.of(contentX, bottom, 90, UiKit.BTN_H, "重新绑定", () -> {
             GisClient client = GisClient.get();
             if (client != null) {
                 client.rebind();
             }
             note("已请求重新绑定世界");
         }));
-        this.addRenderableWidget(new XButton(contentX + 96, bottom, 90, UiKit.BTN_H, "刷新",
-                XButton.Style.SECONDARY, this::refreshData));
+        this.addRenderableWidget(Buttons.of(contentX + 96, bottom, 90, UiKit.BTN_H, "刷新", this::refreshData));
     }
 
     private void buildData() {
         int bottom = py + ph - 26;
-        this.addRenderableWidget(new XButton(contentX, bottom, 96, UiKit.BTN_H, "重试上传",
-                XButton.Style.PRIMARY, () -> {
+        this.addRenderableWidget(Buttons.of(contentX, bottom, 96, UiKit.BTN_H, "重试上传", () -> {
             GisClient client = GisClient.get();
             if (client != null) {
                 client.retryFailedUploads();
             }
             note("已重置失败任务，等待重传");
         }));
-        this.addRenderableWidget(new XButton(contentX + 102, bottom, 96, UiKit.BTN_H, "强制同步",
-                XButton.Style.SECONDARY, () -> {
+        this.addRenderableWidget(Buttons.of(contentX + 102, bottom, 96, UiKit.BTN_H, "强制同步", () -> {
             GisClient client = GisClient.get();
             if (client != null) {
                 client.forceSync();
             }
             note("已触发增量同步");
         }));
-        this.addRenderableWidget(new XButton(contentX + 204, bottom, 96, UiKit.BTN_H, "清理缓存",
-                XButton.Style.DANGER, () -> {
+        this.addRenderableWidget(Buttons.of(contentX + 204, bottom, 96, UiKit.BTN_H, "清理缓存", () -> {
             GisClient client = GisClient.get();
             if (client != null) {
                 client.clearCache();
@@ -258,24 +246,19 @@ public class GisMainScreen extends Screen {
         y += row + 2;
 
         int toggleW = Math.max(66, (contentW - 8) / 3 - 4);
-        this.addRenderableWidget(new XButton(contentX, y, toggleW, 18,
-                config.uploadEnabled() ? "上传：开" : "上传：关", XButton.Style.SECONDARY, () -> {
-            toggleClient(c -> c.toggleUploadEnabled());
-        }));
-        this.addRenderableWidget(new XButton(contentX + toggleW + 4, y, toggleW, 18,
-                config.captureEnabled() ? "采集：开" : "采集：关", XButton.Style.SECONDARY, () -> {
-            toggleClient(c -> c.toggleCaptureEnabled());
-        }));
-        this.addRenderableWidget(new XButton(contentX + (toggleW + 4) * 2, y, toggleW, 18,
-                config.hudEnabled() ? "HUD：开" : "HUD：关", XButton.Style.SECONDARY, () -> {
-            toggleClient(c -> c.toggleHudEnabled());
-        }));
+        this.addRenderableWidget(Buttons.of(contentX, y, toggleW, 18,
+                config.uploadEnabled() ? "上传：开" : "上传：关",
+                () -> toggleClient(GisClient::toggleUploadEnabled)));
+        this.addRenderableWidget(Buttons.of(contentX + toggleW + 4, y, toggleW, 18,
+                config.captureEnabled() ? "采集：开" : "采集：关",
+                () -> toggleClient(GisClient::toggleCaptureEnabled)));
+        this.addRenderableWidget(Buttons.of(contentX + (toggleW + 4) * 2, y, toggleW, 18,
+                config.hudEnabled() ? "HUD：开" : "HUD：关",
+                () -> toggleClient(GisClient::toggleHudEnabled)));
 
         int bottom = py + ph - 26;
-        this.addRenderableWidget(new XButton(contentX, bottom, 76, UiKit.BTN_H, "保存",
-                XButton.Style.PRIMARY, this::saveSettings));
-        this.addRenderableWidget(new XButton(contentX + 82, bottom, 76, UiKit.BTN_H, "重置",
-                XButton.Style.SECONDARY, () -> {
+        this.addRenderableWidget(Buttons.of(contentX, bottom, 76, UiKit.BTN_H, "保存", this::saveSettings));
+        this.addRenderableWidget(Buttons.of(contentX + 82, bottom, 76, UiKit.BTN_H, "重置", () -> {
             GisClient c = GisClient.get();
             if (c != null) {
                 c.config().resetDefaults();
@@ -284,22 +267,21 @@ public class GisMainScreen extends Screen {
             buildWidgets();
             note("已重置为默认配置并保存");
         }));
-        this.addRenderableWidget(new XButton(contentX + 164, bottom, 100, UiKit.BTN_H,
-                client.tokenStore().hasAccessToken() ? "退出登录" : "登录 OAuth",
-                XButton.Style.SECONDARY, () -> {
-            GisClient c = GisClient.get();
-            if (c == null) {
-                return;
-            }
-            if (c.tokenStore().hasAccessToken()) {
-                c.logout();
-                note("已退出 OAuth 登录");
-            } else {
-                String url = c.beginLogin();
-                note("请在浏览器打开授权链接（已打印到日志）");
-                top.xuanjian.map.core.util.GisLog.info("oauth", "授权链接: " + url);
-            }
-        }));
+        this.addRenderableWidget(Buttons.of(contentX + 164, bottom, 100, UiKit.BTN_H,
+                client.tokenStore().hasAccessToken() ? "退出登录" : "登录 OAuth", () -> {
+                    GisClient c = GisClient.get();
+                    if (c == null) {
+                        return;
+                    }
+                    if (c.tokenStore().hasAccessToken()) {
+                        c.logout();
+                        note("已退出 OAuth 登录");
+                    } else {
+                        String url = c.beginLogin();
+                        note("请在浏览器打开授权链接（已打印到日志）");
+                        top.xuanjian.map.core.util.GisLog.info("oauth", "授权链接: " + url);
+                    }
+                }));
     }
 
     private void toggleClient(java.util.function.Consumer<GisClient> action) {
@@ -356,19 +338,15 @@ public class GisMainScreen extends Screen {
         refreshData();
     }
 
-    /* ==================== 渲染 ==================== */
-
     @Override
-    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         computeLayout();
         UiKit.panel(g, px, py, pw, ph);
         UiKit.headerBar(g, px + 1, py + 1, pw - 2, UiKit.HEADER_H - 1);
         UiKit.roundedFill(g, px + 8, py + UiKit.HEADER_H + 8, UiKit.NAV_W, contentH, UiKit.NAV_BG);
 
-        // widget（按钮、输入框）
-        super.extractRenderState(g, mouseX, mouseY, delta);
+        super.render(g, mouseX, mouseY, delta);
 
-        // 前景文字
         UiKit.text(g, this.font, "玄剑 GIS", px + 10, UiKit.vCenter(this.font, py, UiKit.HEADER_H), UiKit.TEXT);
         UiKit.text(g, this.font, page.title, contentX, py + 9, UiKit.TEXT_DIM);
         UiKit.divider(g, px + 8, px + pw - 8, py + UiKit.HEADER_H + 4);
@@ -388,7 +366,7 @@ public class GisMainScreen extends Screen {
         }
     }
 
-    private void renderOverview(GuiGraphicsExtractor g) {
+    private void renderOverview(GuiGraphics g) {
         int y = contentY + 2;
         line(g, snapshot.worldLine(), y, UiKit.TEXT);
         y += 12;
@@ -408,31 +386,28 @@ public class GisMainScreen extends Screen {
                 snapshot.lastError() == null || snapshot.lastError().isBlank()
                         ? UiKit.SUCCESS : UiKit.WARNING);
         y += 14;
-        // 缓存占比条：已上传比例
         GisStore.ChunkStats chunks = snapshot.stats().chunks();
         double ratio = chunks.total() == 0 ? 0 : chunks.uploaded() / (double) chunks.total();
         UiKit.bar(g, contentX, y, contentW - 4, 8, ratio, UiKit.SUCCESS);
         y += 12;
         line(g, "本地缓存后端：" + snapshot.stats().backend()
                 + " · 会话内采集 " + snapshot.capturedThisSession() + " 区块", y, UiKit.TEXT_MUTED);
-        if (pageYOverflow(y)) {
-            line(g, "（内容超出，见数据/设置页）", contentY + contentH - 14, UiKit.TEXT_MUTED);
-        }
     }
 
-    private void renderLayers(GuiGraphicsExtractor g) {
+    private void renderLayers(GuiGraphics g) {
         int y = contentY + 4;
         int[] counts = new int[]{0, 0, 0, 0};
         GisClient client = GisClient.get();
-        if (client != null && client.session() != null && client.session().registered()) {
+        if (client != null && client.session() != null
+                && client.session().dimension() != null && !client.session().dimension().isBlank()) {
             counts = client.locator().layerCounts(client.session().dimension());
         }
         String[] labels = {"城区边界", "道路", "建筑 Marker", "其他 GIS 实体"};
-        int[] countValues = {counts[0], counts[1], counts[2], counts[3]};
+        int[] values = {counts[0], counts[1], counts[2], counts[3]};
         for (int i = 0; i < labels.length; i++) {
             UiKit.card(g, contentX, y + i * 26, contentW - 84, 22, false);
             UiKit.text(g, this.font, labels[i], contentX + 6, y + i * 26 + 7, UiKit.TEXT);
-            UiKit.textRight(g, this.font, countValues[i] + " 个对象",
+            UiKit.textRight(g, this.font, values[i] + " 个对象",
                     contentX + contentW - 92, y + i * 26 + 7, UiKit.TEXT_MUTED);
         }
         int y2 = contentY + 4 + labels.length * 26 + 6;
@@ -441,7 +416,7 @@ public class GisMainScreen extends Screen {
         line(g, snapshot.xaeroMode(), y2 + 12, UiKit.TEXT_MUTED);
     }
 
-    private void renderWorlds(GuiGraphicsExtractor g) {
+    private void renderWorlds(GuiGraphics g) {
         int y = contentY + 2;
         line(g, "当前服务器 Key：" + (snapshot.serverKey().isBlank() ? "（未配置）" : snapshot.serverKey())
                 + " · API " + snapshot.apiBase(), y, UiKit.TEXT_DIM);
@@ -453,7 +428,7 @@ public class GisMainScreen extends Screen {
             return;
         }
         for (RegisteredWorld world : worlds) {
-            if (pageYOverflow(y)) {
+            if (y > py + ph - 40) {
                 break;
             }
             boolean current = snapshot.session() != null && snapshot.session().worldId() == world.id();
@@ -472,7 +447,7 @@ public class GisMainScreen extends Screen {
                 y + 2, UiKit.TEXT_MUTED);
     }
 
-    private void renderData(GuiGraphicsExtractor g) {
+    private void renderData(GuiGraphics g) {
         GisStore.CacheStats stats = snapshot.stats();
         GisStore.ChunkStats chunks = stats.chunks();
         GisStore.JobStats jobs = stats.jobs();
@@ -498,12 +473,11 @@ public class GisMainScreen extends Screen {
         line(g, snapshot.statusLine(), y,
                 stats.lastError() == null || stats.lastError().isBlank() ? UiKit.SUCCESS : UiKit.WARNING);
         y += 14;
-        line(g, "失败数据不删除：上传失败只改状态，可点「重试上传」继续；断网恢复后自动续传。",
-                y, UiKit.TEXT_MUTED);
+        line(g, "失败数据不删除：上传失败只改状态，可点「重试上传」继续；断网恢复后自动续传。", y, UiKit.TEXT_MUTED);
         line(g, snapshot.contractHint(), y + 12, UiKit.TEXT_MUTED);
     }
 
-    private void renderSettings(GuiGraphicsExtractor g) {
+    private void renderSettings(GuiGraphics g) {
         int fieldX = contentX + 78;
         int y = contentY + 2;
         int row = 22;
@@ -516,32 +490,26 @@ public class GisMainScreen extends Screen {
         y += row;
         label(g, "采集间隔/半径/步长", fieldX - 6, y);
         y += row + 20;
-        line(g, "上传限速与服务端 60 次/分钟对齐；采集半径过大反而浪费 CPU 与带宽。",
-                contentX, y, UiKit.TEXT_MUTED);
+        line(g, "上传限速与服务端 60 次/分钟对齐；采集半径过大反而浪费 CPU 与带宽。", contentX, y, UiKit.TEXT_MUTED);
         y += 12;
         line(g, "OAuth 使用统一账号（PKCE），scope read:user read:member；写权限由服务端 gis.submit 判定。",
                 contentX, y, UiKit.TEXT_MUTED);
     }
 
-    private void label(GuiGraphicsExtractor g, String text, int rightX, int boxY) {
+    private void label(GuiGraphics g, String text, int rightX, int boxY) {
         UiKit.textRight(g, this.font, text, rightX, boxY + 5, UiKit.TEXT_DIM);
     }
 
-    private void line(GuiGraphicsExtractor g, String text, int y, int color) {
+    private void line(GuiGraphics g, String text, int y, int color) {
         line(g, text, contentX, y, color);
     }
 
-    private void line(GuiGraphicsExtractor g, String text, int x, int y, int color) {
+    private void line(GuiGraphics g, String text, int x, int y, int color) {
         UiKit.text(g, this.font, UiKit.ellipsis(this.font, text, contentW - 4), x, y, color);
-    }
-
-    private boolean pageYOverflow(int y) {
-        return y > py + ph - 40;
     }
 
     /* ==================== gametest 钩子 ==================== */
 
-    /** 按中文标签切页（自绘按钮不是原版 Button，gametest 用它切页）。 */
     public boolean showPage(String label) {
         for (Page p : Page.values()) {
             if (p.label.equals(label)) {
@@ -565,7 +533,7 @@ public class GisMainScreen extends Screen {
 
     @Override
     public void onClose() {
-        this.minecraft.gui.setScreen(parent);
+        this.minecraft.setScreen(parent);
     }
 
     @Override

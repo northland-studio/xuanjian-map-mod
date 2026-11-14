@@ -2,7 +2,7 @@ package top.xuanjian.map.client.hud;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import top.xuanjian.map.client.GisClient;
 import top.xuanjian.map.client.GisSnapshot;
 import top.xuanjian.map.client.compat.McReflect;
@@ -15,11 +15,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * GIS HUD（默认常驻，`=` 键展开/收起）。
+ * GIS HUD（1.21.11 版：HudElementRegistry 回调收到 {@link GuiGraphics}）。
  *
- * <p>规范第十二节：显示当前城区、当前道路、X/Y/Z、Dimension；无道路时
- * 形如 {@code 当前城区 · 无道路 · X/Y/Z}；定位全部用本地缓存（空间索引 + 节流），
- * 不上传玩家实时位置、不查询服务器。
+ * <p>显示城区/道路/X-Y-Z/Dimension；无道路时形如 {@code 当前城区 · 无道路 · X/Y/Z}；
+ * 定位走本地空间索引 + 节流，不上传玩家实时位置。
  */
 public final class GisHudRenderer {
 
@@ -34,8 +33,7 @@ public final class GisHudRenderer {
     private GisHudRenderer() {
     }
 
-    /** HUD 渲染入口（由 HudElementRegistry 注册的回调调用）。 */
-    public void render(GuiGraphicsExtractor g) {
+    public void render(GuiGraphics g) {
         GisClient client = GisClient.get();
         if (client == null || g == null) {
             return;
@@ -52,47 +50,34 @@ public final class GisHudRenderer {
             List<String> lines = HudText.expanded(location, pos[0], pos[1], pos[2], dimension,
                     List.of(snapshot.cacheLine(), snapshot.uploadLine(), snapshot.syncLine()));
             lines.add("[=] 收起 HUD");
-            drawPanel(g, mc.font, lines);
+            drawPanel(g, mc.font, lines, 4, 4);
             drawMinimap(g, client, dimension, pos[0], pos[2]);
         } else {
-            String line = HudText.compact(location, pos[0], pos[1], pos[2])
-                    + " · " + Dimensions.labelZh(dimension);
-            List<String> lines = new ArrayList<>(2);
-            lines.add(line);
-            drawPanel(g, mc.font, lines);
+            List<String> lines = new ArrayList<>(1);
+            lines.add(HudText.compact(location, pos[0], pos[1], pos[2])
+                    + " · " + Dimensions.labelZh(dimension));
+            drawPanel(g, mc.font, lines, 4, 4);
         }
     }
 
-    private static void drawPanel(GuiGraphicsExtractor g, Font font, List<String> lines) {
+    private static void drawPanel(GuiGraphics g, Font font, List<String> lines, int x, int y) {
         int widest = 0;
         for (String line : lines) {
             widest = Math.max(widest, font.width(line));
         }
         int w = widest + 14;
         int h = lines.size() * LINE_H + 8;
-        int x = 4;
-        int y = 4;
         UiKit.roundedFill(g, x, y, w, h, PANEL_BG);
         UiKit.roundedOutline(g, x, y, w, h, PANEL_BORDER);
         g.fill(x + 1, y + 1, x + 3, y + h - 1, ACCENT);
-        int textX = x + 7;
-        int textY = y + 5;
         for (int i = 0; i < lines.size(); i++) {
-            int color = i == 0 ? UiKit.TEXT : UiKit.TEXT_DIM;
-            if (i == lines.size() - 1) {
-                color = UiKit.TEXT_MUTED;
-            }
-            UiKit.text(g, font, lines.get(i), textX, textY + i * LINE_H, color);
+            int color = i == 0 ? UiKit.TEXT : (i == lines.size() - 1 ? UiKit.TEXT_MUTED : UiKit.TEXT_DIM);
+            UiKit.text(g, font, lines.get(i), x + 7, y + 5 + i * LINE_H, color);
         }
     }
 
-    /** HUD 展开态的小地图：只显示附近 GIS 对象（半径 64 格），不是全图。 */
-    private static void drawMinimap(GuiGraphicsExtractor g, GisClient client, String dimension,
+    private static void drawMinimap(GuiGraphics g, GisClient client, String dimension,
                                     double px, double pz) {
-        var location = client.snapshot().location();
-        if (location == null) {
-            return;
-        }
         int x = 4 + 150;
         int y = 4;
         UiKit.roundedFill(g, x, y, MINIMAP_SIZE, MINIMAP_SIZE + 10, PANEL_BG);
@@ -104,7 +89,7 @@ public final class GisHudRenderer {
         g.fill(cx - 1, cy, cx + 2, cy + 1, ACCENT);
         g.fill(cx, cy - 1, cx + 1, cy + 2, ACCENT);
         var session = client.session();
-        if (session == null || !session.registered()) {
+        if (session == null || session.dimension() == null || session.dimension().isBlank()) {
             return;
         }
         var markers = client.locator().nearbyMarkers(session.dimension(), px, pz, 64, 12);
@@ -133,11 +118,8 @@ public final class GisHudRenderer {
         return value instanceof Number num ? num.intValue() : 0;
     }
 
-    /**
-     * 截图用 HUD 预览：不依赖真实世界，直接渲染与游戏内一致的 HUD 布局。
-     * 用于 CI 里稳定产出「HUD」验收截图（含无道路时的规范格式）。
-     */
-    public void renderPreview(GuiGraphicsExtractor g, Font font, int x, int y) {
+    /** 截图用 HUD 预览（CI 稳定产出「HUD」验收截图，含无道路规范格式）。 */
+    public void renderPreview(GuiGraphics g, Font font, int x, int y) {
         List<String> expanded = HudText.expanded(
                 new LocationInfo("d1", "青云城区", "r1", "中央大道", 3),
                 128, 70, -256, Dimensions.OVERWORLD,
@@ -145,28 +127,10 @@ public final class GisHudRenderer {
                         "上传队列：待传 1 · 重试 0 · 完成 5 · 失败 0",
                         "同步：8 秒前"));
         expanded.add("[=] 收起 HUD");
-        drawPanelAt(g, font, expanded, x, y);
-
+        drawPanel(g, font, expanded, x, y);
         List<String> compact = new ArrayList<>();
         compact.add(HudText.compact(new LocationInfo("d1", "青云城区", null, null, 0),
                 466, 68, -870) + " · 主世界");
-        drawPanelAt(g, font, compact, x, y + expanded.size() * LINE_H + 18);
-    }
-
-    private static void drawPanelAt(GuiGraphicsExtractor g, Font font, List<String> lines,
-                                    int x, int y) {
-        int widest = 0;
-        for (String line : lines) {
-            widest = Math.max(widest, font.width(line));
-        }
-        int w = widest + 14;
-        int h = lines.size() * LINE_H + 8;
-        UiKit.roundedFill(g, x, y, w, h, PANEL_BG);
-        UiKit.roundedOutline(g, x, y, w, h, PANEL_BORDER);
-        g.fill(x + 1, y + 1, x + 3, y + h - 1, ACCENT);
-        for (int i = 0; i < lines.size(); i++) {
-            int color = i == 0 ? UiKit.TEXT : (i == lines.size() - 1 ? UiKit.TEXT_MUTED : UiKit.TEXT_DIM);
-            UiKit.text(g, font, lines.get(i), x + 7, y + 5 + i * LINE_H, color);
-        }
+        drawPanel(g, font, compact, x, y + expanded.size() * LINE_H + 18);
     }
 }
