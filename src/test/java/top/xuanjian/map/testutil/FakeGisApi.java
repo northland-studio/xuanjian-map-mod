@@ -50,7 +50,7 @@ public class FakeGisApi implements GisApi {
     }
 
     @Override
-    public PlanResult planChunks(long worldId, String dimension, List<int[]> chunks) {
+    public PlanResult planChunks(long worldId, String dimension, List<int[]> chunks) throws ApiException {
         calls.add("plan:" + chunks.size());
         if (!planErrors.isEmpty()) {
             throw planErrors.remove(0);
