@@ -23,6 +23,27 @@ class BlockHashTest {
         assertEquals(40204, BlockHash.hash16("minecraft:short_grass"));
     }
 
+    /**
+     * 与契约自校验：直接用标准 java.util.zip.CRC32 复算，再和 BlockHash 比较。
+     * 这样即使 docs/gis-api.md 的示例值调整，也能一眼看出客户端算法是否漂移。
+     */
+    @Test
+    void hash16EqualsStandardCrc32LowBits() {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update("minecraft:grass_block".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        long raw = crc.getValue();
+        // 服务端口径：CRC32(resourceName UTF-8) & 0xFFFF
+        assertEquals(1430378039L, raw, "minecraft:grass_block 的标准 CRC32 十进制值");
+        assertEquals(54839, (int) (raw & 0xFFFFL), "CRC32 低 16 位");
+        assertEquals(54839, BlockHash.hash16("minecraft:grass_block"),
+                "BlockHash 必须等于 java.util.zip.CRC32 & 0xFFFF（与服务端 palette 同算法）");
+        // 排序/行优先与 heightMatrix 相同由 codec/采集实现保证，这里再确认 noSurface 哨兵不参与 hash 计算
+        for (String name : new String[]{"minecraft:water", "minecraft:stone", "minecraft:oak_planks"}) {
+            java.util.zip.CRC32 c = new java.util.zip.CRC32();
+            c.update(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals((int) (c.getValue() & 0xFFFFL), BlockHash.hash16(name), name);
+        }
+    }
     @Test
     void hash16IsStableAcrossCallsAndTrimmed() {
         int first = BlockHash.hash16("minecraft:grass_block");
