@@ -50,8 +50,8 @@ public final class GisHudRenderer {
             List<String> lines = HudText.expanded(location, pos[0], pos[1], pos[2], dimension,
                     List.of(snapshot.cacheLine(), snapshot.uploadLine(), snapshot.syncLine()));
             lines.add("[=] 收起 HUD");
-            drawPanel(g, mc.font, lines, 4, 4);
-            drawMinimap(g, client, dimension, pos[0], pos[2]);
+            int panelWidth = drawPanel(g, mc.font, lines, 4, 4);
+            drawMinimap(g, client, dimension, pos[0], pos[2], 4 + panelWidth + 6);
         } else {
             List<String> lines = new ArrayList<>(1);
             lines.add(HudText.compact(location, pos[0], pos[1], pos[2])
@@ -60,7 +60,7 @@ public final class GisHudRenderer {
         }
     }
 
-    private static void drawPanel(GuiGraphics g, Font font, List<String> lines, int x, int y) {
+    private static int drawPanel(GuiGraphics g, Font font, List<String> lines, int x, int y) {
         int widest = 0;
         for (String line : lines) {
             widest = Math.max(widest, font.width(line));
@@ -74,11 +74,11 @@ public final class GisHudRenderer {
             int color = i == 0 ? UiKit.TEXT : (i == lines.size() - 1 ? UiKit.TEXT_MUTED : UiKit.TEXT_DIM);
             UiKit.text(g, font, lines.get(i), x + 7, y + 5 + i * LINE_H, color);
         }
+        return w;
     }
 
     private static void drawMinimap(GuiGraphics g, GisClient client, String dimension,
-                                    double px, double pz) {
-        int x = 4 + 150;
+                                    double px, double pz, int x) {
         int y = 4;
         UiKit.roundedFill(g, x, y, MINIMAP_SIZE, MINIMAP_SIZE + 10, PANEL_BG);
         UiKit.roundedOutline(g, x, y, MINIMAP_SIZE, MINIMAP_SIZE + 10, PANEL_BORDER);

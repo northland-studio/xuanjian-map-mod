@@ -30,19 +30,27 @@ public record GisSnapshot(WorldSession session, BootstrapInfo bootstrap,
         if (session == null || !session.registered()) {
             String reason = session == null || session.lastError() == null || session.lastError().isBlank()
                     ? "未绑定" : session.lastError();
-            return "世界：未绑定（" + reason + "）";
+            return "世界：本地模式（" + reason + "）";
         }
         return "世界：" + session.worldKey() + " #" + session.worldId()
                 + " · " + session.mcVersion() + " · " + session.statusLabel();
     }
 
     public String uploadLine() {
-        if (session == null || !session.canUpload()) {
-            return "上传：未启用（世界未注册 / 服务器未登记）";
+        if (session == null || session.worldId() <= 0 || !session.registered()) {
+            String reason = session == null || session.lastError() == null
+                    || session.lastError().isBlank()
+                    ? "未绑定世界" : session.lastError();
+            return "上传：暂停（" + reason + "）";
         }
         GisStore.JobStats jobs = stats.jobs();
         return "上传队列：待传 " + jobs.pending() + " · 重试 " + jobs.retry()
                 + " · 完成 " + jobs.done() + " · 失败 " + jobs.failed();
+    }
+
+    /** 是否为本地模式（采集/HUD/叠加可用但不上传）。 */
+    public boolean localMode() {
+        return session == null || session.worldId() <= 0 || !session.registered();
     }
 
     public String cacheLine() {

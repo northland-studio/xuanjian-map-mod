@@ -87,6 +87,7 @@ public final class GisClient {
     private long lastSyncAttempt;
     private long lastUiRefresh;
     private int tickCounter;
+    private int bindFailures;
     private LocationInfo lastLocation = LocationInfo.EMPTY;
     private LocationInfo cachedLocation = LocationInfo.EMPTY;
     private long locationAt;
@@ -196,7 +197,10 @@ public final class GisClient {
             return;
         }
         boolean retryAfterFailure = session != null && !session.lastError().isBlank();
-        long interval = retryAfterFailure ? 60_000L : 5_000L;
+        // 未绑定（服务器未注册/世界归档/网络不可用）时逐步退避，避免反复请求轰炸接口
+        long interval = retryAfterFailure
+                ? Math.min(300_000L, 60_000L * Math.max(1, bindFailures))
+                : 5_000L;
         if (now - lastBindAttempt < interval) {
             return;
         }
@@ -216,6 +220,7 @@ public final class GisClient {
 
     /** 绑定失败时进入本地模式：仍可采集/HUD/叠加，但永远不上传（规范第六节）。 */
     private WorldSession localSession(String serverKey, String dimension, String error) {
+        bindFailures++;
         return new WorldSession(serverKey == null ? "" : serverKey, 0, "", dimension, "", false,
                 "LOCAL", System.currentTimeMillis(), error);
     }
@@ -223,7 +228,7 @@ public final class GisClient {
     private void bindWorld(String dimension) {
         String serverKey = config.serverKey();
         if (serverKey == null || serverKey.isBlank()) {
-            session = localSession("", dimension, "未配置 gis.serverKey（本地模式）");
+            session = localSession("", dimension, "未配置 gis.serverKey（本地模式，上传暂停）");
             refreshSnapshotSoon();
             return;
         }
@@ -233,7 +238,8 @@ public final class GisClient {
             store.putWorlds(serverKey, info.worlds());
             RegisteredWorld world = info.currentWorld();
             if (world == null) {
-                session = localSession(serverKey, dimension, "服务器未注册 ACTIVE 世界（本地模式）");
+                session = localSession(serverKey, dimension, archivedReason(info));
+                GisLog.warn(TAG, "无 ACTIVE 世界，进入本地模式（上传暂停）: " + session.lastError());
                 refreshSnapshotSoon();
                 return;
             }
@@ -242,15 +248,37 @@ public final class GisClient {
             session = new WorldSession(serverKey, resolved.worldId(), resolved.worldKey(),
                     Dimensions.normalize(resolved.dimension()), world.mcVersion(),
                     resolved.ok(), resolved.status(), System.currentTimeMillis(), "");
+            bindFailures = 0;
             GisLog.info(TAG, "世界绑定成功: " + session.worldKey() + " #" + session.worldId()
                     + " dim=" + session.dimension());
             syncNow();
         } catch (ApiException e) {
-            session = localSession(serverKey, dimension, e.describe() + "（本地模式）");
-            GisLog.warn(TAG, "世界绑定失败，进入本地模式: " + e.describe());
+            session = localSession(serverKey, dimension, bindErrorReason(e));
+            GisLog.warn(TAG, "世界绑定失败，进入本地模式（上传暂停）: " + e.describe());
         } finally {
             refreshSnapshotSoon();
         }
+    }
+
+    /** 无 ACTIVE 世界时的明确原因（世界全部归档 / 服务器尚未注册世界）。 */
+    private static String archivedReason(BootstrapInfo info) {
+        boolean hasArchived = info != null && info.worlds().stream()
+                .anyMatch(w -> w.status() == top.xuanjian.map.core.model.WorldStatus.ARCHIVED);
+        if (hasArchived) {
+            return "服务器世界已归档（无 ACTIVE 世界），上传暂停；官方恢复后自动继续";
+        }
+        return "服务器未注册 ACTIVE 世界（本地模式），上传暂停；注册后自动继续";
+    }
+
+    private static String bindErrorReason(ApiException e) {
+        return switch (e.code()) {
+            case "server_not_registered" -> "服务器未在玄剑 GIS 注册（本地模式），上传暂停";
+            case "world_not_registered" -> "世界未注册（本地模式），上传暂停";
+            case "world_archived" -> "世界已归档，上传暂停；官方恢复 ACTIVE 后自动继续";
+            case "dimension_mismatch" -> "该维度未登记，上传暂停（可切换维度或联系管理员）";
+            case "unauthorized" -> "未登录 OAuth（本地模式），上传暂停";
+            default -> "无法绑定世界（" + e.code() + "），上传暂停";
+        };
     }
 
     private void maybeSync() {
@@ -481,6 +509,7 @@ public final class GisClient {
         session = WorldSession.NONE;
         lastBindAttempt = 0;
         binding = false;
+        bindFailures = 0;
     }
 
     public void toggleUploadEnabled() {
@@ -566,12 +595,29 @@ public final class GisClient {
         if (level == null) {
             return Dimensions.OVERWORLD;
         }
-        Object key = McReflect.call(level, new String[]{"dimension"});
+        Object key = McReflect.call(level, new String[]{"dimension", "getDimension"});
         if (key == null) {
             return Dimensions.OVERWORLD;
         }
-        Object location = McReflect.call(key, new String[]{"location", "registry"});
-        return location == null ? Dimensions.OVERWORLD : Dimensions.normalize(String.valueOf(location));
+        // 优先 location()/getLocation()；拿不到就清洗 ResourceKey.toString()（形如
+        // "ResourceKey[minecraft:dimension / minecraft:overworld]"）
+        Object location = McReflect.call(key, new String[]{"location", "getLocation"});
+        String raw = location != null ? String.valueOf(location) : String.valueOf(key);
+        return Dimensions.normalize(Dimensions.sanitize(raw));
+    }
+
+    /** debug：把世界/维度/反射关键信息拼成一行（gametest 打印，便于跨版本排查）。 */
+    public String debugWorldInfo(Minecraft mc) {
+        Object level = McReflect.field(mc, "level");
+        if (level == null) {
+            level = McReflect.call(mc, new String[]{"level", "getLevel"});
+        }
+        Object rawKey = level == null ? null : McReflect.call(level, new String[]{"dimension", "getDimension"});
+        Object rawLocation = rawKey == null ? null : McReflect.call(rawKey, new String[]{"location", "getLocation"});
+        return "level=" + (level == null ? "null" : level.getClass().getSimpleName())
+                + ", dimensionKey=" + rawKey
+                + ", location=" + rawLocation
+                + ", normalized=" + readDimension(mc);
     }
 
     public void shutdown() {

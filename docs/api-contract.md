@@ -15,7 +15,25 @@ serverName=樱梨`，三个维度 chunkCount=0（无地形数据）。**本地�
   全部由服务端判定；客户端不维护管理员名单
 - access_token 2h、refresh_token 30d 一次性轮换（`PkceOAuth` 刷新后立刻写回）
 - 实测 `GET /api/gis/client/bootstrap` 无 Bearer 返回 **401** → 未登录时客户端进入本地模式
-  （采集/HUD/叠加可用，不上传）。可选配置 `gis.serverToken` 会附加 `X-GIS-Server-Token` 头
+  （采集/HUD/叠加可用，不上传）
+- `X-GIS-Server-Token`：服务端确认**客户端不需要**；配置项仅作可选（默认空、默认不发），
+  上传一律用 `Authorization: Bearer <access_token>`，不作为上传必要条件
+
+## 世界归档 / 无 ACTIVE 世界时的本地模式（生产已确认会发生）
+
+站方会把旧世界（`yl-main`、`樱梨-main`）置为 `ARCHIVED`、`is_current=0`，真实服务器重新注册前
+生产 bootstrap 可能**没有 ACTIVE 世界**。客户端行为：
+
+| 场景 | 客户端行为 |
+| --- | --- |
+| bootstrap 有 ACTIVE 世界 | 正常绑定 → 采集 + 上传 + 同步 |
+| bootstrap 全部 ARCHIVED / 无世界 | 进入**本地模式**：采集、HUD、Overlay 全部可用；上传队列暂停，UI 显示「服务器世界已归档（无 ACTIVE 世界），上传暂停；官方恢复后自动继续」 |
+| resolve-world 返回 `world_archived` (409) | 同上，本地模式；该错误按永久错误处理，不无限重试 |
+| `server_not_registered` / `world_not_registered` / `unauthorized` | 本地模式，显示对应原因 |
+| 恢复 ACTIVE 世界 | 下次 bootstrap（退避最长 5 分钟）、手动「立即同步/重新绑定」、或重进世界后自动恢复上传 |
+
+避免接口轰炸：绑定失败时按失败次数退避（60s→最多 300s 一次），手动刷新会重置退避；
+上传与同步只在 `session.canUpload()` 时执行，本地模式下完全不发请求。
 
 ## 世界绑定
 

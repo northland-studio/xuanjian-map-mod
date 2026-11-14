@@ -54,6 +54,36 @@ public final class Dimensions {
         };
     }
 
+    /**
+     * 从任意 toString 中提取 {@code namespace:path}。
+     *
+     * <p>Minecraft 的 ResourceKey.toString() 形如
+     * {@code ResourceKey[minecraft:dimension / minecraft:overworld]}，
+     * 不同版本还可能给成 ResourceLocation 直接字符串；这里统一清洗，避免把
+     * "minecraft:dimension"（注册表名）误当成维度。
+     */
+    public static String sanitize(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return OVERWORLD;
+        }
+        String text = raw.trim();
+        int slash = text.lastIndexOf(" / ");
+        if (slash >= 0) {
+            text = text.substring(slash + 3);
+        }
+        int bracket = text.indexOf(']');
+        if (bracket >= 0) {
+            text = text.substring(0, bracket);
+        }
+        text = text.trim();
+        if (text.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+            return text;
+        }
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("([a-z0-9_.-]+:[a-z0-9_./-]+)").matcher(text);
+        return matcher.find() ? matcher.group(1) : text;
+    }
+
     public static String labelZh(String dimension) {
         String d = normalize(dimension);
         return switch (d) {

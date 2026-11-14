@@ -52,6 +52,10 @@ class HttpGisApiMockTest {
     private static volatile boolean rateLimitNext;
     private static volatile boolean forbiddenNext;
     private static volatile boolean invalidPayloadNext;
+    /** bootstrap 返回「世界全部 ARCHIVED、无 ACTIVE」的场景。 */
+    private static volatile boolean bootstrapNoActiveWorld;
+    /** resolve-world 返回 world_archived 的场景。 */
+    private static volatile boolean resolveArchivedNext;
 
     @BeforeAll
     static void startServer() throws Exception {
@@ -59,6 +63,21 @@ class HttpGisApiMockTest {
         server.createContext("/api/gis/client/bootstrap", ex -> {
             record(ex);
             String serverKey = queryParam(ex, "serverKey");
+            if (bootstrapNoActiveWorld) {
+                // 生产现状：两个世界都归档，is_current=0 → 客户端必须能本地模式运行
+                json(ex, 200, """
+                        {"contract":1,"server":{"key":"%s","name":"樱梨"},
+                         "worlds":[
+                           {"id":1,"worldKey":"yl-main","status":"ARCHIVED","isCurrent":false,
+                            "mcVersion":"","dimensions":[{"dimension":"overworld"}]},
+                           {"id":2,"worldKey":"yingli-main","status":"ARCHIVED","isCurrent":false,
+                            "mcVersion":"","dimensions":[{"dimension":"overworld"}]}],
+                         "limits":{"planChunksMax":4096,"maxChunkBatch":64,"maxCompressedBytes":4194304,
+                                   "maxDecompressedBytes":8388608,"maxSampleSize":32,"uploadRatePerMinute":60},
+                         "sync":{"intervalSeconds":60}}
+                        """.formatted(serverKey));
+                return;
+            }
             json(ex, 200, """
                     {"contract":1,"server":{"key":"%s","name":"玄剑生产服"},
                      "worlds":[
@@ -76,6 +95,10 @@ class HttpGisApiMockTest {
         server.createContext("/api/gis/client/resolve-world", ex -> {
             record(ex);
             lastResolveBody = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            if (resolveArchivedNext) {
+                json(ex, 409, "{\"ok\":false,\"error\":\"world_archived\",\"message\":\"world archived\"}");
+                return;
+            }
             json(ex, 200, """
                     {"ok":true,"world":{"id":1,"worldKey":"xuanjian-main","status":"ACTIVE",
                      "dimension":"minecraft:overworld"}}
@@ -204,7 +227,35 @@ class HttpGisApiMockTest {
         rateLimitNext = false;
         forbiddenNext = false;
         invalidPayloadNext = false;
+        bootstrapNoActiveWorld = false;
+        resolveArchivedNext = false;
         seenIdempotencyKeys.clear();
+    }
+
+    @Test
+    void bootstrap_noActiveWorldMeansLocalMode(@TempDir Path dir) throws Exception {
+        resetFlags();
+        bootstrapNoActiveWorld = true;
+        HttpGisApi api = api(dir);
+        BootstrapInfo info = api.bootstrap("yl");
+        assertEquals(2, info.worlds().size());
+        assertTrue(info.worlds().stream().allMatch(w -> w.status()
+                == top.xuanjian.map.core.model.WorldStatus.ARCHIVED));
+        // 没有 ACTIVE 世界 → 客户端必须走本地模式（不崩溃、上传暂停）
+        assertEquals(null, info.currentWorld());
+    }
+
+    @Test
+    void resolveWorld_archivedIsPermanentError(@TempDir Path dir) {
+        resetFlags();
+        resolveArchivedNext = true;
+        HttpGisApi api = api(dir);
+        ApiException error = assertThrows(ApiException.class,
+                () -> api.resolveWorld("yl", 1, "yl-main", "minecraft:overworld"));
+        assertEquals("world_archived", error.code());
+        assertEquals(409, error.httpStatus());
+        assertTrue(error.isPermanent(), "归档世界不应无限重试");
+        assertFalse(error.isRateLimited());
     }
 
     @Test
