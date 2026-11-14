@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "xuanjianmap",
+  "version": "${version}",
+  "name": "Xuanjian Map Mod",
+  "description": "玄剑 GIS 官方客户端：Minecraft 区块地理数据采集、本地 SQLite 缓存、增量上传、GIS HUD 与地图叠加层。",
+  "authors": [
+    "Northland Studio"
+  ],
+  "contact": {
+    "homepage": "https://xuanjian.top",
+    "sources": "https://github.com/northland-studio/xuanjian-map-mod"
+  },
+  "license": "MIT",
+  "icon": "assets/xuanjianmap/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "top.xuanjian.map.XuanjianMap"
+    ],
+    "client": [
+      "top.xuanjian.map.client.XuanjianMapClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

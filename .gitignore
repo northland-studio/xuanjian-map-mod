@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 运行时数据（本地 GIS 缓存/日志/配置，绝不入库）
+run/
+run-*/
+logs/
+*.log
+config/
+gis-cache/
+
+# 测试与调试产物
+*.png.bak
+test-shots/
