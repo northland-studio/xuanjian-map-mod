@@ -81,7 +81,9 @@ public class GisMainScreen extends Screen {
 
     private void computeLayout() {
         pw = Math.max(420, Math.min(this.width - 24, 620));
-        ph = Math.max(280, Math.min(this.height - 24, 440));
+        // 注意：height 是 GUI 缩放后的高度（如 854x480 截图在 scale=2 时只有 240），
+        // 面板不能比屏幕高，否则底部按钮/提示条会被裁到屏幕外。
+        ph = Math.max(200, Math.min(this.height - 16, 440));
         px = (this.width - pw) / 2;
         py = (this.height - ph) / 2;
         contentX = px + 8 + UiKit.NAV_W + 8;
