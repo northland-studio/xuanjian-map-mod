@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class MemoryGisStore implements GisStore {
 
     private final Map<ChunkKey, ChunkRow> chunks = new LinkedHashMap<>();
+    private final Map<ChunkKey, ChunkLocal> chunkLocals = new LinkedHashMap<>();
     private final Map<Long, JobRow> jobs = new LinkedHashMap<>();
     private final Map<String, StoredObject> objects = new LinkedHashMap<>();
     private final Map<String, String> cursors = new LinkedHashMap<>();
@@ -115,6 +116,24 @@ public final class MemoryGisStore implements GisStore {
     @Override
     public synchronized void deleteChunks(long worldId, String dimension) {
         chunks.keySet().removeIf(k -> k.worldId() == worldId && k.dimension().equals(dimension));
+    }
+
+    @Override
+    public synchronized void putChunkLocal(ChunkLocal local) {
+        chunkLocals.put(new ChunkKey(local.worldId(), local.dimension(), local.chunkX(), local.chunkZ()),
+                local);
+    }
+
+    @Override
+    public synchronized List<ChunkLocal> loadChunkLocals(long worldId, String dimension, int limit) {
+        List<ChunkLocal> out = new ArrayList<>();
+        for (ChunkLocal local : chunkLocals.values()) {
+            if (local.worldId() == worldId && local.dimension().equals(dimension)
+                    && out.size() < limit) {
+                out.add(local);
+            }
+        }
+        return out;
     }
 
     @Override
@@ -269,6 +288,7 @@ public final class MemoryGisStore implements GisStore {
     @Override
     public synchronized void clearCache() {
         chunks.clear();
+        chunkLocals.clear();
         jobs.clear();
         objects.clear();
         cursors.clear();

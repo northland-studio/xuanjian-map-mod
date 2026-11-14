@@ -16,13 +16,13 @@ bin/
 .DS_Store
 Thumbs.db
 
-# 运行时数据（本地 GIS 缓存/日志/配置，绝不入库）
-run/
-run-*/
-logs/
+# 运行时数据（本地 GIS 缓存/日志/配置，绝不入库；只忽略根目录，避免误伤源码包）
+/run/
+/run-*/
+/logs/
+/config/
+/gis-cache/
 *.log
-config/
-gis-cache/
 
 # 测试与调试产物
 *.png.bak

@@ -79,6 +79,15 @@ test {
 	}
 }
 
+// 客户端 gametest：CI 无头环境下关闭网络同步器（Fabric 官方建议），避免偶发失败
+tasks.configureEach { t ->
+	if (t.name == "runClientGameTest" || t.name == "runProductionClientGameTest") {
+		if (t.hasProperty("jvmArgs")) {
+			t.jvmArgs "-Dfabric.client.gametest.disableNetworkSynchronizer=true"
+		}
+	}
+}
+
 java {
 	withSourcesJar()
 	sourceCompatibility = JavaVersion.VERSION_25

@@ -68,6 +68,17 @@ public interface GisStore extends AutoCloseable {
                         long updatedAt, boolean deleted) {
     }
 
+    /**
+     * 区块的本地扩展信息（结构 / block entity / 方块调色板）。
+     *
+     * <p>契约的 chunk 二进制只包含高度/biome/可选 blockHist，没有结构字段，
+     * 因此结构、block entity 等 Minecraft 原生数据只存本地（供自有叠加渲染/后续契约扩展），
+     * 通过本表与 chunks 一一对应，不参与上传。
+     */
+    record ChunkLocal(long worldId, String dimension, int chunkX, int chunkZ,
+                      String structuresJson, String blockEntitiesJson, String blockPaletteJson) {
+    }
+
     /** 统计（数据状态页用）。 */
     record ChunkStats(long total, long captured, long queued, long uploaded, long failed, long payloadBytes) {
         public static final ChunkStats EMPTY = new ChunkStats(0, 0, 0, 0, 0, 0);
@@ -109,6 +120,11 @@ public interface GisStore extends AutoCloseable {
     void setChunkState(List<ChunkKey> keys, ChunkState state, long nextAttemptAt, String error);
 
     void deleteChunks(long worldId, String dimension);
+
+    /** 写入区块本地扩展（结构/block entity/方块调色板；不参与上传）。 */
+    void putChunkLocal(ChunkLocal local);
+
+    List<ChunkLocal> loadChunkLocals(long worldId, String dimension, int limit);
 
     /* ---------------- 上传任务 ---------------- */
 

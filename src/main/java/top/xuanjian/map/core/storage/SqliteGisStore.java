@@ -75,6 +75,17 @@ public final class SqliteGisStore implements GisStore {
                     )""");
             st.execute("CREATE INDEX IF NOT EXISTS idx_chunks_state ON chunks(state)");
             st.execute("""
+                    CREATE TABLE IF NOT EXISTS chunk_locals (
+                      world_id INTEGER NOT NULL,
+                      dimension TEXT NOT NULL,
+                      chunk_x INTEGER NOT NULL,
+                      chunk_z INTEGER NOT NULL,
+                      structures_json TEXT NOT NULL,
+                      block_entities_json TEXT NOT NULL,
+                      block_palette_json TEXT NOT NULL,
+                      PRIMARY KEY (world_id, dimension, chunk_x, chunk_z)
+                    )""");
+            st.execute("""
                     CREATE TABLE IF NOT EXISTS upload_jobs (
                       id INTEGER PRIMARY KEY AUTOINCREMENT,
                       world_id INTEGER NOT NULL,
@@ -305,7 +316,58 @@ public final class SqliteGisStore implements GisStore {
         }
     }
 
+    /* ==================== chunk locals（仅本地，不上传） ==================== */
+
+    @Override
+    public void putChunkLocal(ChunkLocal local) {
+        String sql = """
+                INSERT INTO chunk_locals(world_id, dimension, chunk_x, chunk_z,
+                  structures_json, block_entities_json, block_palette_json)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(world_id, dimension, chunk_x, chunk_z) DO UPDATE SET
+                  structures_json=excluded.structures_json,
+                  block_entities_json=excluded.block_entities_json,
+                  block_palette_json=excluded.block_palette_json
+                """;
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, local.worldId());
+            ps.setString(2, local.dimension());
+            ps.setInt(3, local.chunkX());
+            ps.setInt(4, local.chunkZ());
+            ps.setString(5, local.structuresJson());
+            ps.setString(6, local.blockEntitiesJson());
+            ps.setString(7, local.blockPaletteJson());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new StoreException("写入区块本地扩展失败", e);
+        }
+    }
+
+    @Override
+    public List<ChunkLocal> loadChunkLocals(long worldId, String dimension, int limit) {
+        String sql = "SELECT * FROM chunk_locals WHERE world_id=? AND dimension=?"
+                + " ORDER BY chunk_x, chunk_z LIMIT ?";
+        List<ChunkLocal> out = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, worldId);
+            ps.setString(2, dimension);
+            ps.setInt(3, Math.max(1, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new ChunkLocal(rs.getLong("world_id"), rs.getString("dimension"),
+                            rs.getInt("chunk_x"), rs.getInt("chunk_z"),
+                            rs.getString("structures_json"), rs.getString("block_entities_json"),
+                            rs.getString("block_palette_json")));
+                }
+            }
+        } catch (SQLException e) {
+            throw new StoreException("读取区块本地扩展失败", e);
+        }
+        return out;
+    }
+
     /* ==================== upload_jobs ==================== */
+
 
     @Override
     public long insertJob(JobRow job) {
@@ -648,6 +710,7 @@ public final class SqliteGisStore implements GisStore {
     public void clearCache() {
         try (Statement st = connection.createStatement()) {
             st.executeUpdate("DELETE FROM chunks");
+            st.executeUpdate("DELETE FROM chunk_locals");
             st.executeUpdate("DELETE FROM upload_jobs");
             st.executeUpdate("DELETE FROM gis_objects");
             st.executeUpdate("DELETE FROM sync_cursor");

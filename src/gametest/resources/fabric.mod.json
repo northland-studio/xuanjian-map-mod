@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "xuanjianmap-test",
+  "version": "1.0.0",
+  "name": "Xuanjian Map GIS Client Game Tests",
+  "description": "客户端 gametest：启动客户端 → 建测试世界 → 验证 GIS 采集/缓存/HUD/叠加 → 逐页截图",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": [
+      "top.xuanjian.map.gametest.GisClientGameTest"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.2",
+    "xuanjianmap": "*"
+  }
+}

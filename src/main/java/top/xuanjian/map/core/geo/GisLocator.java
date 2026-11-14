@@ -64,6 +64,15 @@ public final class GisLocator {
         return d == null ? 0 : d.total;
     }
 
+    /** 各图层对象数量：{districts, roads, markers, others}（图层管理页展示）。 */
+    public int[] layerCounts(String dimension) {
+        DimIndex d = index.get(Dimensions.normalize(dimension));
+        if (d == null) {
+            return new int[]{0, 0, 0, 0};
+        }
+        return new int[]{d.districts.size(), d.roads.size(), d.markers.size(), d.others.size()};
+    }
+
     /** 定位玩家所在城区与道路（HUD 核心）。 */
     public LocationInfo locate(String dimension, double x, double z) {
         DimIndex idx = index.get(Dimensions.normalize(dimension));

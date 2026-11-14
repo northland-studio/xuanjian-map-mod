@@ -1,0 +1,91 @@
+name: GIS 客户端 gametest（截图验收）26.x
+
+# 真实启动 Minecraft 客户端（xvfb 虚拟显示）→ 建测试世界 → 验证 GIS 采集/缓存/HUD/叠加 → 逐页截图。
+# 断言见 src/gametest/java/top/xuanjian/map/gametest/GisClientGameTest.java。
+# 全部在 GitHub Actions 执行（规范禁止本地 Gradle）。
+
+on:
+  push:
+    branches: [26]
+  workflow_dispatch:
+
+jobs:
+  client-gametest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Setup Gradle 9.5.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: 安装 xvfb（无头 GL）
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri mesa-utils
+
+      - name: 接受 gametest EULA
+        run: ./gradlew acceptGameTestEula --no-daemon -q || true
+
+      - name: 跑客户端 gametest（截图）
+        run: |
+          set +e
+          xvfb-run -a -s "-screen 0 1280x800x24" ./gradlew runClientGameTest --no-daemon --stacktrace > gametest.log 2>&1
+          echo "$?" > .gt-exit
+          tail -120 gametest.log
+          exit 0
+
+      - name: 收集截图/日志并判定
+        id: diag
+        run: |
+          SHOTS=$(find . -path '*screenshots*' -name '*.png' 2>/dev/null | wc -l)
+          echo "截图数量: $SHOTS"
+          echo "gametest 退出码: $(cat .gt-exit)"
+          if [ "$(cat .gt-exit)" = "0" ] && grep -q "BUILD SUCCESSFUL" gametest.log && [ "$SHOTS" -ge 8 ]; then
+            echo "failed=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            echo "===== 关键错误行 ====="
+            grep -nE "error:|gametest\]|GameTest|AssertionError|FAILED|Exception|BUILD" gametest.log | tail -n 150 || true
+          fi
+
+      - name: 上传截图 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gis-gametest-screenshots-26
+          path: |
+            run/**/screenshots/**/*.png
+            run/**/*.png
+            **/screenshots/**/*.png
+          if-no-files-found: warn
+
+      - name: 上传日志与报告 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gis-gametest-logs-26
+          path: |
+            gametest.log
+            run/logs/**
+            build/reports/**
+            build/test-results/**
+          if-no-files-found: warn
+
+      - name: 失败则让 job 变红
+        if: steps.diag.outputs.failed == '1'
+        run: |
+          echo "客户端 gametest 失败：见 gis-gametest-logs-26 artifact 与上面的关键错误行" >&2
+          exit 1
