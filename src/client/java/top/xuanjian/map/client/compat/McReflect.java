@@ -143,6 +143,11 @@ public final class McReflect {
         return call(target, new String[]{name}, args);
     }
 
+    /** 方法是否存在（按名字+参数匹配），用于跨版本选择不同签名。 */
+    public static boolean hasMethod(Object target, String name, Object... args) {
+        return target != null && findMethod(target.getClass(), name, args) != null;
+    }
+
     /** 静态方法调用。 */
     public static Object callStatic(Class<?> type, String[] names, Object... args) {
         if (type == null) {

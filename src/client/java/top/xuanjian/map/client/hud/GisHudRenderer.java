@@ -52,8 +52,8 @@ public final class GisHudRenderer {
             List<String> lines = HudText.expanded(location, pos[0], pos[1], pos[2], dimension,
                     List.of(snapshot.cacheLine(), snapshot.uploadLine(), snapshot.syncLine()));
             lines.add("[=] 收起 HUD");
-            drawPanel(g, mc.font, lines);
-            drawMinimap(g, client, dimension, pos[0], pos[2]);
+            int panelWidth = drawPanel(g, mc.font, lines);
+            drawMinimap(g, client, dimension, pos[0], pos[2], 4 + panelWidth + 6);
         } else {
             String line = HudText.compact(location, pos[0], pos[1], pos[2])
                     + " · " + Dimensions.labelZh(dimension);
@@ -63,7 +63,7 @@ public final class GisHudRenderer {
         }
     }
 
-    private static void drawPanel(GuiGraphicsExtractor g, Font font, List<String> lines) {
+    private static int drawPanel(GuiGraphicsExtractor g, Font font, List<String> lines) {
         int widest = 0;
         for (String line : lines) {
             widest = Math.max(widest, font.width(line));
@@ -84,16 +84,16 @@ public final class GisHudRenderer {
             }
             UiKit.text(g, font, lines.get(i), textX, textY + i * LINE_H, color);
         }
+        return w;
     }
 
     /** HUD 展开态的小地图：只显示附近 GIS 对象（半径 64 格），不是全图。 */
     private static void drawMinimap(GuiGraphicsExtractor g, GisClient client, String dimension,
-                                    double px, double pz) {
+                                    double px, double pz, int x) {
         var location = client.snapshot().location();
         if (location == null) {
             return;
         }
-        int x = 4 + 150;
         int y = 4;
         UiKit.roundedFill(g, x, y, MINIMAP_SIZE, MINIMAP_SIZE + 10, PANEL_BG);
         UiKit.roundedOutline(g, x, y, MINIMAP_SIZE, MINIMAP_SIZE + 10, PANEL_BORDER);

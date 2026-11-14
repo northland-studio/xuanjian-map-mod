@@ -146,8 +146,11 @@ public class GisClientGameTest implements FabricClientGameTest {
             Integer hud = context.computeOnClient(client -> {
                 GisClient gis = GisClient.get();
                 int[] pos = top.xuanjian.map.client.hud.GisHudRenderer.playerPosition(client);
+                LOGGER.info("[gametest] 世界内：世界信息={}", gis.debugWorldInfo(client));
                 LOGGER.info("[gametest] 世界内：维度={}, 坐标={}/{}/{}",
                         gis.snapshot().session().dimension(), pos[0], pos[1], pos[2]);
+                LOGGER.info("[gametest] 本地模式={}, 上传状态={}",
+                        gis.snapshot().localMode(), gis.snapshot().uploadLine());
                 return gis.config().hudEnabled() ? 1 : 0;
             });
             LOGGER.info("[gametest] 采集落库 chunk 数={}, backend={}, HUD={}",
@@ -158,6 +161,17 @@ public class GisClientGameTest implements FabricClientGameTest {
             }
             if (session == null || session.dimension() == null || session.dimension().isBlank()) {
                 throw new AssertionError("HUD 会话维度为空（世界识别失败）");
+            }
+            if (!session.dimension().contains("overworld")) {
+                throw new AssertionError("维度解析错误（应为主世界 overworld）: " + session.dimension());
+            }
+            Boolean localMode = context.computeOnClient(client -> GisClient.get().snapshot().localMode());
+            if (!Boolean.TRUE.equals(localMode)) {
+                throw new AssertionError("CI 无生产 API 时应为本地模式（上传暂停）");
+            }
+            String uploadLine = context.computeOnClient(client -> GisClient.get().snapshot().uploadLine());
+            if (uploadLine == null || !uploadLine.contains("暂停")) {
+                throw new AssertionError("本地模式上传状态文案不正确: " + uploadLine);
             }
             shots.add(capture(context, "8-inworld-hud"));
 
