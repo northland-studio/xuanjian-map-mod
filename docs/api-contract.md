@@ -86,11 +86,12 @@ per chunk:
   无数据/空列记 `0xFFFF`。
 - **采样网格**：与 `heightMatrix` 完全一致（相同 `sampleStep/sampleSize`，逐列一次方块读取，
   复用 blockHist 已读取的方块对象，渲染线程外无额外开销）。
-- **开关**：`capture.surfaceBlocks`（当前**默认 false**）。等服务端 `decodeBatch` v2 + palette
-  上线并回报后，把默认值改为 true 即可（一行配置变更，无需发版逻辑改动）。
+- **开关**：`capture.surfaceBlocks`（**默认 true**；服务端 `decodeBatch` bit3 +
+  `/api/gis/map/palette` 已上线）。设置页「地表：开/关」可随时切换，也可直接改
+  `config/xuanjianmap.properties`。
 - **旧区块补传**：本地缓存中 `flags & 8 == 0` 的旧区块会被标记待补采；玩家靠近时客户端
   重采并重传（服务端按 `(worldId,dimension,chunkX,chunkZ)` upsert 覆盖为 v2），用户无需重新跑图。
-  生产 `hetao-main`（id=3）已有 51 个旧格式 chunk，服务端上线后由该机制自动补传。
+  生产 `hetao-main`（id=3，当前约 60 个 v1 chunk）由该机制自动补传。
 - **兼容**：不带 bit3 的旧载荷服务端照常接收，网页端用「高度 + 生物群系」兜底着色；客户端解析
   也同时兼容 v1/v2 两种载荷（`ChunkBodyCodec` 有旧格式回归测试）。
 
