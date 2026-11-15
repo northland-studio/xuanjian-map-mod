@@ -47,7 +47,9 @@
 8. v2 方块彩色地图数据（surfaceBlockMatrix，flags bit3）：
    - 采集后断言本地 SQLite 区块 payload 带 bit3、surfaceBlockMatrix 非全 xFFFF
      （日志 2 断言：surfaceBlockMatrix 有效列 N/N（flags=13））；
-   - 单元测试覆盖 hash16 稳定性（CRC32 标准向量）、bit3 字节布局与总长度、
+   - 单元测试覆盖 hash16 稳定性（CRC32 标准向量）、**方块名命名空间规范化**（`BlockIdsTest`：
+  裸 path 补 `minecraft:`、ResourceKey 字符串解析、规范名/旧名 hash 对照 54839 vs 29901）、
+  bit3 字节布局与总长度、
      surfaceBlockMatrix 紧跟 lockHist 的顺序、旧格式（无 bit3）仍可解析、
      xFFFF 无数据保留、capture.surfaceBlocks 默认开启（服务端 v2 已上线）；
 9. 断言每张截图不是纯色（采样色数 ≥ 8）、结束时回到标题界面、截图数 ≥ 12。

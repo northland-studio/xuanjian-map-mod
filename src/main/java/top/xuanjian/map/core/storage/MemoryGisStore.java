@@ -141,6 +141,34 @@ public final class MemoryGisStore implements GisStore {
         return out;
     }
     @Override
+    public synchronized List<int[]> chunksForSurfaceRefresh(long worldId, String dimension, int limit) {
+        List<int[]> out = new ArrayList<>();
+        for (ChunkRow row : chunks.values()) {
+            if (row.key().worldId() != worldId || !row.key().dimension().equals(dimension)) {
+                continue;
+            }
+            if (row.state() == ChunkState.FAILED) {
+                continue;
+            }
+            out.add(new int[]{row.key().chunkX(), row.key().chunkZ()});
+            if (out.size() >= Math.max(1, limit)) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    @Override
+    public synchronized void requeueChunk(ChunkKey key) {
+        ChunkRow existing = chunks.get(key);
+        if (existing != null) {
+            chunks.put(key, new ChunkRow(existing.key(), ChunkState.CAPTURED, existing.payload(),
+                    existing.sampleStep(), existing.sampleSize(), existing.minY(), existing.maxY(),
+                    existing.flags(), existing.capturedAt(), existing.attempts(),
+                    existing.lastError(), existing.uploadedAt()));
+        }
+    }
+    @Override
     public synchronized void putChunkLocal(ChunkLocal local) {
         chunkLocals.put(new ChunkKey(local.worldId(), local.dimension(), local.chunkX(), local.chunkZ()),
                 local);

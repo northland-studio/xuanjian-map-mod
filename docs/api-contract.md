@@ -79,6 +79,9 @@ per chunk:
   stone=0x3214(12820)、sand=0xFC48(64584)、oak_planks=0x0782(1922)；
   标准自检 CRC32("123456789")==0xCBF43926；服务端 GET /api/gis/map/palette 的 locks
   键即合法 hash16（lockNames 可反查），可作 CI 对账依据。
+- **hash16 输入必须是完整命名空间资源名**（`namespace:path`，如 `minecraft:grass_block`）。
+  **禁止**使用 `ResourceLocation.getPath()`（会得到 `grass_block`，hash 变成 29901 而不是 54839）。
+  客户端已用 `BlockIds.normalize` 统一处理，并有单测覆盖两种 hash 的对照（见 `BlockIdsTest`）。
 - **hash16 算法**：`CRC32(方块资源名) & 0xFFFF`，例如
   `CRC32("minecraft:grass_block") & 0xFFFF == 54839`；与站点 `GET /api/gis/map/palette`
   的 `blocks[hash16]` 使用同一算法（Windows .NET/Java 均验证过一致性）。
@@ -92,6 +95,11 @@ per chunk:
 - **旧区块补传**：本地缓存中 `flags & 8 == 0` 的旧区块会被标记待补采；玩家靠近时客户端
   重采并重传（服务端按 `(worldId,dimension,chunkX,chunkZ)` upsert 覆盖为 v2），用户无需重新跑图。
   生产 `hetao-main`（id=3，当前约 60 个 v1 chunk）由该机制自动补传。
+- **历史数据 hash 迁移**：旧版本 1.21 分支误用「无命名空间」hash（如 57782=CRC32(`dirt`)、
+  5338=CRC32(`water`)、29901=CRC32(`grass_block`)），服务端 palette 可能因此显示灰/黑。
+  新版客户端（本仓库）已修正，并带一次性迁移：玩家靠近旧区块时自动重采 + 强制重传（同一 chunk key upsert）。
+  两个 hash 方案的全量清单见仓库 `docs/blocks-hash.json`（规范名）与
+  `docs/blocks-hash-legacy.json`（旧版无命名空间名）。
 - **兼容**：不带 bit3 的旧载荷服务端照常接收，网页端用「高度 + 生物群系」兜底着色；客户端解析
   也同时兼容 v1/v2 两种载荷（`ChunkBodyCodec` 有旧格式回归测试）。
 

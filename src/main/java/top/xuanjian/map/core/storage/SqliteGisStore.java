@@ -339,6 +339,42 @@ public final class SqliteGisStore implements GisStore {
         }
         return out;
     }
+    @Override
+    public List<int[]> chunksForSurfaceRefresh(long worldId, String dimension, int limit) {
+        String sql = "SELECT chunk_x, chunk_z FROM chunks"
+                + " WHERE world_id=? AND dimension=? AND state IN ('CAPTURED','QUEUED','UPLOADED')"
+                + " ORDER BY captured_at DESC, chunk_x, chunk_z LIMIT ?";
+        List<int[]> out = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, worldId);
+            ps.setString(2, dimension);
+            ps.setInt(3, Math.max(1, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new int[]{rs.getInt(1), rs.getInt(2)});
+                }
+            }
+        } catch (SQLException e) {
+            throw new StoreException("查询待重采区块失败", e);
+        }
+        return out;
+    }
+
+    @Override
+    public void requeueChunk(ChunkKey key) {
+        String sql = "UPDATE chunks SET state='CAPTURED', updated_at=? "
+                + "WHERE world_id=? AND dimension=? AND chunk_x=? AND chunk_z=?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setLong(2, key.worldId());
+            ps.setString(3, key.dimension());
+            ps.setInt(4, key.chunkX());
+            ps.setInt(5, key.chunkZ());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new StoreException("重新排队区块失败", e);
+        }
+    }
     /* ==================== chunk locals（仅本地，不上传） ==================== */
 
     @Override
