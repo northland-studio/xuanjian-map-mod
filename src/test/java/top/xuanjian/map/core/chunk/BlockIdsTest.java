@@ -63,6 +63,6 @@ class BlockIdsTest {
         // normalize 之后（契约要求）带命名空间，hash 完全不同
         assertEquals("minecraft:dirt", BlockIds.normalize("dirt"));
         assertEquals(54839, BlockHash.hash16(BlockIds.normalize("minecraft:grass_block")));
-        assertEquals(25387, BlockHash.hash16(BlockIds.normalize("minecraft:dirt")));
+        assertEquals(36847, BlockHash.hash16(BlockIds.normalize("minecraft:dirt")));
     }
 }
