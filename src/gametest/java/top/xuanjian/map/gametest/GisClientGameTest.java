@@ -213,6 +213,38 @@ public class GisClientGameTest implements FabricClientGameTest {
             if (surfaceValid == null || surfaceValid <= 0) {
                 throw new AssertionError("v2 地表方块矩阵缺失或全为 0xFFFF: " + surfaceValid);
             }
+
+            // 一次性导出「全部方块资源名 → hash16」清单（服务端 palette 补色用）
+            Integer blockHashCount = context.computeOnClient(client -> {
+                java.nio.file.Path out = java.nio.file.Path.of("blocks-hash.json").toAbsolutePath();
+                try {
+                    int n = top.xuanjian.map.client.compat.BlockHashExporter.exportJson(out);
+                    LOGGER.info("[gametest] blocks-hash.json 导出 {} 个方块 -> {}", n, out);
+                    return n;
+                } catch (Exception e) {
+                    LOGGER.error("[gametest] blocks-hash.json 导出失败: {}", out, e);
+                    return -1;
+                }
+            });
+            if (blockHashCount == null || blockHashCount < 500) {
+                throw new AssertionError("blocks-hash.json 导出失败或数量异常: " + blockHashCount);
+            }
+
+            // 一次性导出「全部方块资源名 → hash16」清单（服务端 palette 补色用）
+            Integer blockHashCount = context.computeOnClient(client -> {
+                java.nio.file.Path out = java.nio.file.Path.of("blocks-hash.json").toAbsolutePath();
+                try {
+                    int n = top.xuanjian.map.client.compat.BlockHashExporter.exportJson(out);
+                    LOGGER.info("[gametest] blocks-hash.json 导出 {} 个方块 -> {}", n, out);
+                    return n;
+                } catch (Exception e) {
+                    LOGGER.error("[gametest] blocks-hash.json 导出失败: {}", out, e);
+                    return -1;
+                }
+            });
+            if (blockHashCount == null || blockHashCount < 500) {
+                throw new AssertionError("blocks-hash.json 导出失败或数量异常: " + blockHashCount);
+            }
             if (session == null || session.dimension() == null || session.dimension().isBlank()) {
                 throw new AssertionError("HUD 会话维度为空（世界识别失败）");
             }

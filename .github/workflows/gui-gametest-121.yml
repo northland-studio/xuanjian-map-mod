@@ -70,6 +70,15 @@ jobs:
             **/screenshots/**/*.png
           if-no-files-found: warn
 
+      - name: 上传方块 hash 清单 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blocks-hash-121
+          path: |
+            blocks-hash.json
+            **/blocks-hash.json
+          if-no-files-found: warn
       - name: 上传日志与报告 artifacts
         if: always()
         uses: actions/upload-artifact@v4
