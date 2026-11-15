@@ -127,6 +127,15 @@ public interface GisStore extends AutoCloseable {
      */
     List<int[]> chunksNeedingSurface(long worldId, String dimension, int limit);
 
+    /**
+     * 一次性 hash 方案迁移：返回该世界/维度下所有已采集区块坐标（用于重新采集并重传）。
+     * 用于修复「旧版本把无命名空间方块名哈希上传，服务端 palette 对不上」的历史数据。
+     */
+    List<int[]> chunksForSurfaceRefresh(long worldId, String dimension, int limit);
+
+    /** 强制某区块重新排队上传（用于 hash 迁移后覆盖服务端旧数据）。 */
+    void requeueChunk(ChunkKey key);
+
     /** 写入区块本地扩展（结构/block entity/方块调色板；不参与上传）。 */
     void putChunkLocal(ChunkLocal local);
 

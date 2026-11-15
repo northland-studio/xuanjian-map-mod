@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import top.xuanjian.map.client.compat.McReflect;
 import top.xuanjian.map.core.chunk.BlockHash;
+import top.xuanjian.map.core.chunk.BlockIds;
 import top.xuanjian.map.core.chunk.ChunkData;
 import top.xuanjian.map.core.net.Json;
 
@@ -320,11 +321,19 @@ public final class ChunkSampler {
         if (keyLike instanceof java.util.Optional<?> optional) {
             return optional.isEmpty() ? null : resourceKeyId(optional.get());
         }
-        Object location = McReflect.call(keyLike, new String[]{"location", "registry", "getPath"});
-        if (location instanceof String s) {
-            return s;
+        // 1) ResourceKey.location() / Holder.unwrapKey() 等 → "namespace:path"
+        Object location = McReflect.call(keyLike, new String[]{"location", "registry"});
+        String id = BlockIds.normalize(location == null ? null : String.valueOf(location));
+        if (id != null) {
+            return id;
         }
-        return location == null ? null : String.valueOf(location);
+        // 2) 直接 toString：ResourceLocation 是 "namespace:path"；ResourceKey[...] 由 BlockIds 解析
+        id = BlockIds.normalize(String.valueOf(keyLike));
+        if (id != null) {
+            return id;
+        }
+        // 3) 最后兜底 getPath()（纯 path，BlockIds 会补 minecraft: 命名空间）
+        return BlockIds.normalize(String.valueOf(McReflect.call(keyLike, "getPath")));
     }
 
     private static String readStructures(Object chunk, List<String> warnings) {

@@ -6,6 +6,7 @@ import top.xuanjian.map.client.capture.ChunkCaptureService;
 import top.xuanjian.map.client.compat.ClipboardCompat;
 import top.xuanjian.map.client.compat.McReflect;
 import top.xuanjian.map.client.compat.XaeroCompat;
+import top.xuanjian.map.core.chunk.ChunkKey;
 import top.xuanjian.map.core.compress.BlobCodecs;
 import top.xuanjian.map.core.config.GisConfig;
 import top.xuanjian.map.core.dimension.Dimensions;
@@ -100,6 +101,8 @@ public final class GisClient {
     private volatile String pendingAuthorizeUrl = "";
     /** v2 补采：本地缺 surfaceBlockMatrix(bit3) 的区块坐标（只存 chunk 坐标，用于靠近时重采）。 */
     private final Set<Long> surfaceRecapture = ConcurrentHashMap.newKeySet();
+    /** 一次性 hash 方案迁移：需要重采并强制重传的区块（修正无命名空间 hash 历史数据）。 */
+    private final Set<Long> surfaceRehash = ConcurrentHashMap.newKeySet();
 
     private GisClient() {
         this.dataDir = FabricLoader.getInstance().getConfigDir().resolve("xuanjianmap");
@@ -368,7 +371,7 @@ public final class GisClient {
 
     /* ==================== v2 地表方块补采（旧区块重传） ==================== */
 
-    /** 该区块是否需要补采（缺 surfaceBlockMatrix 且当前世界/维度匹配）。 */
+    /** 该区块是否需要补采（缺 surfaceBlockMatrix 或需修正 hash 方案，且当前世界/维度匹配）。 */
     public boolean needsSurfaceRecapture(int chunkX, int chunkZ) {
         if (!config.captureSurfaceBlocks()) {
             return false;
@@ -377,32 +380,51 @@ public final class GisClient {
         if (current == null || !current.registered() || current.dimension() == null) {
             return false;
         }
-        return surfaceRecapture.contains(coordKey(chunkX, chunkZ));
-    }
-
-    /** 补采完成后从待补采集合移除（上传由 Uploader 自动接管，同 chunk key upsert）。 */
-    public void markSurfaceRecaptured(int chunkX, int chunkZ) {
-        surfaceRecapture.remove(coordKey(chunkX, chunkZ));
-    }
-
-    /** 待补采区块数量（数据页/日志展示）。 */
-    public int surfaceBackfillCount() {
-        return surfaceRecapture.size();
+        long key = coordKey(chunkX, chunkZ);
+        return surfaceRecapture.contains(key) || surfaceRehash.contains(key);
     }
 
     /**
-     * 扫描本地缓存中「已存在但缺 surfaceBlockMatrix」的区块，加入待补采集合。
-     * 玩家靠近时 ChunkCaptureService 会重采并重传（不要求用户重新跑图）。
+     * 补采完成后从待补采集合移除；若是 hash 迁移区块则强制重新排队上传
+     * （服务端按同一 chunk key upsert，用正确 hash 覆盖历史数据）。
+     */
+    public void markSurfaceRecaptured(int chunkX, int chunkZ) {
+        long key = coordKey(chunkX, chunkZ);
+        surfaceRecapture.remove(key);
+        if (surfaceRehash.remove(key)) {
+            WorldSession current = session;
+            if (current != null && current.registered()) {
+                store.requeueChunk(new ChunkKey(current.worldId(), current.dimension(), chunkX, chunkZ));
+            }
+        }
+    }
+
+    /** 待补采/待重采区块数量（数据页/日志展示）。 */
+    public int surfaceBackfillCount() {
+        return surfaceRecapture.size() + surfaceRehash.size();
+    }
+
+    /**
+     * 扫描本地缓存：
+     * <ol>
+     *   <li>已有区块（CAPTURED/QUEUED/UPLOADED）中 flags 缺 surfaceBlockMatrix(bit3) 的 → 待补采；</li>
+     *   <li>一次性 hash 迁移（marker 不存在时）：所有已采集区块 → 重采并强制重传，
+     *       修正旧版本「方块名丢命名空间」导致的 palette 颜色对不上问题。</li>
+     * </ol>
+     * 玩家靠近时 ChunkCaptureService 会重采；不需要用户重新跑图。
      */
     public void refreshSurfaceBackfill() {
         if (!config.captureSurfaceBlocks()) {
             surfaceRecapture.clear();
+            surfaceRehash.clear();
             return;
         }
         WorldSession current = session;
         if (current == null || !current.registered()) {
             return;
         }
+        java.nio.file.Path marker = dataDir.resolve("surface-hash-v2.migrated");
+        boolean needHashMigration = !java.nio.file.Files.exists(marker);
         dbExec.submit(() -> {
             try {
                 List<int[]> coords = store.chunksNeedingSurface(current.worldId(),
@@ -413,7 +435,23 @@ public final class GisClient {
                 }
                 if (!coords.isEmpty()) {
                     GisLog.info(TAG, "v2 地表方块补采：本地有 " + coords.size()
-                            + " 个旧区块待补（玩家靠近时自动重采并重传）");
+                            + " 个旧区块缺 surface，靠近时自动重采并重传");
+                }
+                if (needHashMigration) {
+                    List<int[]> all = store.chunksForSurfaceRefresh(current.worldId(),
+                            current.dimension(), 50000);
+                    surfaceRehash.clear();
+                    for (int[] c : all) {
+                        surfaceRehash.add(coordKey(c[0], c[1]));
+                    }
+                    GisLog.info(TAG, "v2 hash 迁移：标记 " + all.size()
+                            + " 个已采集区块重采（修正无命名空间方块名 hash），靠近时自动重采并覆盖上传");
+                    try {
+                        java.nio.file.Files.createDirectories(marker.getParent());
+                        java.nio.file.Files.writeString(marker, Long.toString(System.currentTimeMillis()));
+                    } catch (Exception e) {
+                        GisLog.warn(TAG, "写 hash 迁移 marker 失败（下次启动会重试）: " + e);
+                    }
                 }
             } catch (RuntimeException e) {
                 GisLog.warn(TAG, "扫描待补采区块失败: " + e);
