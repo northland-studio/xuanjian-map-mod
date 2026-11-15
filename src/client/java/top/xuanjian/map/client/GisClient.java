@@ -120,12 +120,6 @@ public final class GisClient {
             config.clearMigrated();
             GisLog.info(TAG, "v2 地表方块采集：已把旧配置 capture.surfaceBlocks=false 迁移为默认开启");
         }
-        // v2：旧版本默认关闭 surfaceBlockMatrix 写进配置的，启动时自动迁移为开启并回写
-        if (config.migrated()) {
-            config.save();
-            config.clearMigrated();
-            GisLog.info(TAG, "v2 地表方块采集：已把旧配置 capture.surfaceBlocks=false 迁移为默认开启");
-        }
         dbExec.submit(this::refreshSnapshot);
     }
 
