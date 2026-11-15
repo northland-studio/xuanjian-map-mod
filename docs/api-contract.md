@@ -79,6 +79,9 @@ per chunk:
   stone=0x3214(12820)、sand=0xFC48(64584)、oak_planks=0x0782(1922)；
   标准自检 CRC32("123456789")==0xCBF43926；服务端 GET /api/gis/map/palette 的 locks
   键即合法 hash16（lockNames 可反查），可作 CI 对账依据。
+- **兼容期**：服务端（68e8f5e 起）对每个方块**双登记**带命名空间与不带命名空间两种 hash（颜色一致），
+  因此客户端从旧方案切换是安全的；旧 chunk 已存 path-only hash，map 接口按存储值查色。
+  客户端现已统一写契约版本（带命名空间），历史数据由一次性 hash 迁移重采重传覆盖。
 - **hash16 输入必须是完整命名空间资源名**（`namespace:path`，如 `minecraft:grass_block`）。
   **禁止**使用 `ResourceLocation.getPath()`（会得到 `grass_block`，hash 变成 29901 而不是 54839）。
   客户端已用 `BlockIds.normalize` 统一处理，并有单测覆盖两种 hash 的对照（见 `BlockIdsTest`）。
