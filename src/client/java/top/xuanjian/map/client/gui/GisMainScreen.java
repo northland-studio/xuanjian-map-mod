@@ -573,7 +573,7 @@ public class GisMainScreen extends Screen {
         if (surfaceClient != null) {
             int surfaceBackfill = surfaceClient.surfaceBackfillCount();
             line(g, "v2 地表方块：" + (surfaceClient.config().captureSurfaceBlocks()
-                            ? "采集已开启" : "采集关闭（等服务端支持后开启）")
+                            ? "采集已开启" : "采集已关闭（设置页可开启）")
                             + (surfaceBackfill > 0 ? " · 待补采 " + surfaceBackfill + " 个旧区块" : ""),
                     y + 24, UiKit.TEXT_MUTED);
         }
