@@ -44,23 +44,24 @@ class BlockIdsTest {
     void dualHashPaletteCompatibilityDuringMigration() {
         // 服务端双登记兼容期：同一个方块，契约（带命名空间）hash 与历史（裸 path）hash 都命中 palette
         int contractGrass = BlockHash.hash16(BlockIds.normalize("minecraft:grass_block"));
-        int legacyGrass = BlockHash.hash16(BlockIds.normalize("grass_block"));
+        int legacyGrass = BlockHash.hash16("grass_block"); // 旧版直接 hash 裸 path（服务端别名）
         assertEquals(54839, contractGrass, "契约向量 grass_block");
         assertEquals(29901, legacyGrass, "旧版无命名空间向量 grass_block（服务端别名）");
         assertNotEquals(contractGrass, legacyGrass);
 
         assertEquals(9188, BlockHash.hash16(BlockIds.normalize("minecraft:water")));
-        assertEquals(5338, BlockHash.hash16(BlockIds.normalize("water")));
+        assertEquals(5338, BlockHash.hash16("water"));
         assertEquals(36847, BlockHash.hash16(BlockIds.normalize("minecraft:dirt")));
-        assertEquals(57782, BlockHash.hash16(BlockIds.normalize("dirt")));
+        assertEquals(57782, BlockHash.hash16("dirt"));
     }
     @Test
     void namespaceStrippedHashesMatchProductionLegacyData() {
         // 线上旧数据是「无命名空间」hash：dirt=57782 / water=5338 / grass_block=29901
-        assertEquals(57782, BlockHash.hash16(BlockIds.normalize("dirt")));
-        assertEquals(5338, BlockHash.hash16(BlockIds.normalize("water")));
-        assertEquals(29901, BlockHash.hash16(BlockIds.normalize("grass_block")));
-        // 而契约/服务端 palette 用的是带命名空间 hash
+        assertEquals(57782, BlockHash.hash16("dirt"));
+        assertEquals(5338, BlockHash.hash16("water"));
+        assertEquals(29901, BlockHash.hash16("grass_block"));
+        // normalize 之后（契约要求）带命名空间，hash 完全不同
+        assertEquals("minecraft:dirt", BlockIds.normalize("dirt"));
         assertEquals(54839, BlockHash.hash16(BlockIds.normalize("minecraft:grass_block")));
         assertEquals(25387, BlockHash.hash16(BlockIds.normalize("minecraft:dirt")));
     }

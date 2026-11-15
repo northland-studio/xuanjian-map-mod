@@ -19,6 +19,10 @@ public final class BlockIds {
 
     public static final String DEFAULT_NAMESPACE = "minecraft";
 
+    /** 合法命名空间/路径（Minecraft 资源名规则）。 */
+    private static final java.util.regex.Pattern NAMESPACE = java.util.regex.Pattern.compile("[a-z0-9_.-]+");
+    private static final java.util.regex.Pattern PATH = java.util.regex.Pattern.compile("[a-z0-9/._-]+");
+
     private BlockIds() {
     }
 
@@ -50,25 +54,22 @@ public final class BlockIds {
         if (text.isEmpty()) {
             return null;
         }
-        // 带命名空间：直接用（只保留 namespace:path 形态）
+        // 带命名空间：直接用（只保留 namespace:path 形态），并做合法性校验
         int colon = text.indexOf(':');
         if (colon > 0) {
             String namespace = text.substring(0, colon).trim();
             String path = text.substring(colon + 1).trim();
-            if (path.isEmpty()) {
-                return null;
-            }
-            // 去掉可能残留的空格/括号
+            // 去掉可能残留的空格/括号（ResourceKey toString 的收尾）
             while (path.endsWith("]")) {
                 path = path.substring(0, path.length() - 1).trim();
             }
-            if (namespace.isEmpty() || namespace.contains(" ") || path.isEmpty()) {
+            if (!NAMESPACE.matcher(namespace).matches() || !PATH.matcher(path).matches()) {
                 return null;
             }
             return namespace + ":" + path;
         }
         // 纯 path（例如 ResourceLocation.getPath()）→ 补 minecraft 命名空间
-        if (text.contains(" ") || text.contains("[") || text.contains("]")) {
+        if (!PATH.matcher(text).matches()) {
             return null;
         }
         return DEFAULT_NAMESPACE + ":" + text;
