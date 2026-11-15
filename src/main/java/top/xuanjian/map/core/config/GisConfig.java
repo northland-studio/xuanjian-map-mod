@@ -59,10 +59,7 @@ public class GisConfig {
     private boolean captureSurfaceBlocksUserSet = false;
     /** 加载时是否做了旧配置迁移（需要回写配置文件）。 */
     private transient boolean migrated = false;
-    /** 用户是否在设置页显式切换过（用于区分「旧版本默认 false 写进配置」与「用户主动关闭」）。 */
-    private boolean captureSurfaceBlocksUserSet = false;
-    /** 加载时是否做了旧配置迁移（需要回写配置文件）。 */
-    private transient boolean migrated = false;
+
 
     private boolean uploadEnabled = true;
     private int uploadRatePerMinute = DEFAULT_UPLOAD_RATE_PER_MINUTE;
@@ -128,18 +125,6 @@ public class GisConfig {
         if (!captureSurfaceBlocksUserSet && !captureSurfaceBlocks) {
             // v2 服务端上线前的旧版本默认 false 会写进配置；用户没主动关过 → 自动迁移为开启
             captureSurfaceBlocks = true;
-        captureSurfaceBlocksUserSet = false;
-        migrated = false;
-            migrated = true;
-        }
-        captureSurfaceBlocksUserSet = bool("capture.surfaceBlocksUserSet", false);
-        if (!captureSurfaceBlocksUserSet && !captureSurfaceBlocks) {
-            // v2 服务端上线前的旧版本默认 false 会写进配置；用户没主动关过 → 自动迁移为开启
-            captureSurfaceBlocks = true;
-        captureSurfaceBlocksUserSet = false;
-        migrated = false;
-        captureSurfaceBlocksUserSet = false;
-        migrated = false;
             migrated = true;
         }
 
@@ -173,7 +158,6 @@ public class GisConfig {
         raw.setProperty("capture.radiusChunks", String.valueOf(captureRadiusChunks));
         raw.setProperty("capture.sampleStep", String.valueOf(sampleStep));
         raw.setProperty("capture.surfaceBlocks", String.valueOf(captureSurfaceBlocks));
-        raw.setProperty("capture.surfaceBlocksUserSet", String.valueOf(captureSurfaceBlocksUserSet));
         raw.setProperty("capture.surfaceBlocksUserSet", String.valueOf(captureSurfaceBlocksUserSet));
         raw.setProperty("upload.enabled", String.valueOf(uploadEnabled));
         raw.setProperty("upload.ratePerMinute", String.valueOf(uploadRatePerMinute));
@@ -211,8 +195,6 @@ public class GisConfig {
         captureRadiusChunks = DEFAULT_CAPTURE_RADIUS_CHUNKS;
         sampleStep = DEFAULT_SAMPLE_STEP;
         captureSurfaceBlocks = true;
-        captureSurfaceBlocksUserSet = false;
-        migrated = false;
         captureSurfaceBlocksUserSet = false;
         migrated = false;
         uploadEnabled = true;
