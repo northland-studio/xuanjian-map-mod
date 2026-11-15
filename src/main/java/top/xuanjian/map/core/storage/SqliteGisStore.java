@@ -362,14 +362,13 @@ public final class SqliteGisStore implements GisStore {
 
     @Override
     public void requeueChunk(ChunkKey key) {
-        String sql = "UPDATE chunks SET state='CAPTURED', updated_at=? "
+        String sql = "UPDATE chunks SET state='CAPTURED', next_attempt_at=0, attempts=0, last_error=NULL "
                 + "WHERE world_id=? AND dimension=? AND chunk_x=? AND chunk_z=?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setLong(1, System.currentTimeMillis());
-            ps.setLong(2, key.worldId());
-            ps.setString(3, key.dimension());
-            ps.setInt(4, key.chunkX());
-            ps.setInt(5, key.chunkZ());
+            ps.setLong(1, key.worldId());
+            ps.setString(2, key.dimension());
+            ps.setInt(3, key.chunkX());
+            ps.setInt(4, key.chunkZ());
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new StoreException("重新排队区块失败", e);

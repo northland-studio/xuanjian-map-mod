@@ -165,7 +165,7 @@ public final class MemoryGisStore implements GisStore {
             chunks.put(key, new ChunkRow(existing.key(), ChunkState.CAPTURED, existing.payload(),
                     existing.sampleStep(), existing.sampleSize(), existing.minY(), existing.maxY(),
                     existing.flags(), existing.capturedAt(), existing.attempts(),
-                    existing.lastError(), existing.uploadedAt()));
+                    existing.lastError(), 0L));
         }
     }
     @Override
